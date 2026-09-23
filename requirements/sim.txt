@@ -1,0 +1,11 @@
+# Extra packages for the simulation, on top of reachy_mini==1.10.0 in reachy_mini_env.
+# mediapipe 0.10.30-0.10.35 keeps numpy 2 (0.10.21 would downgrade numpy/protobuf) but drops mp.solutions,
+# so the code uses the mediapipe.tasks API.
+mujoco==3.3.0
+mediapipe==0.10.35
+# Camera names -> OpenCV indices (also in reachy_mini[opencv]); indices change when the iPhone connects.
+cv2_enumerate_cameras==1.3.3
+# mediapipe 1.0.1 aborts on macOS arm64 ("Check failed: service_ Service is unavailable", GPU service required).
+#
+# scikit-learn is NOT here: nothing in sim/ or core/ needs it at run time, because the recognizers load the
+# tracked numpy exports in core/models/*.npz. Training needs it -- see requirements/training.txt.
