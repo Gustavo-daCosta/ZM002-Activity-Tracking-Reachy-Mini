@@ -1,0 +1,15 @@
+# Robot-side venv (~/wave_env on the Raspberry Pi CM4: ReachyMiniOS v0.2.3, Debian 13 aarch64, Python 3.12).
+# Installed by robot/deploy.sh; reachy_mini itself is handled there (wheel or the apps venv).
+#
+# mediapipe/BlazePose is NOT usable on this robot: the 1.0.1 aarch64 binaries (the only ones for aarch64)
+# require the AES instructions the Cortex-A72 lacks -> "FATAL ERROR: This binary was compiled with aes
+# enabled, but this feature is not available on this processor". Pose runs on MoveNet Lightning instead,
+# through onnxruntime (same version the daemon uses).
+# LiteRT (TFLite + XNNPACK) runs the int8 MoveNet in ~34 ms here, vs ~95 ms for the fp32 model on
+# onnxruntime, whose wheel only has the plain CPU provider.
+ai-edge-litert
+onnxruntime==1.27.0
+# Resizing / color conversion; headless because the robot has no display.
+opencv-python-headless==4.12.0.88
+# No scikit-learn: the classifier runs from models/wave_classifier.npz (simulation/motion/forest.py),
+# which is ~30 ms per evaluation cheaper here and removes the pickle's version coupling.
