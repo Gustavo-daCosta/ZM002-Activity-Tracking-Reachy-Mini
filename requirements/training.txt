@@ -1,0 +1,9 @@
+# Training and dataset work: this Mac only. Installed on top of requirements/sim.txt.
+#
+# The robot venv deliberately does NOT get scikit-learn: it runs the numpy `.npz` forest export instead
+# (core/motion/forest.py), which is ~30 ms per evaluation cheaper on the CM4 and removes the joblib
+# pickle's version coupling. core/motion/detectors.py imports sklearn and joblib inside functions only,
+# so importing core/ never requires them.
+#
+# The test suite also needs this file: it trains small forests to check the .npz export round-trips.
+scikit-learn==1.9.1
