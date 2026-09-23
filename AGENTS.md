@@ -1,7 +1,8 @@
 # Instructions for AI agents
 
 Working notes for any AI coding agent in this repository (Claude Code reads this through `CLAUDE.md`).
-Start with [README.md](README.md) for what the project is; this file is the operating manual.
+Start with [README.md](README.md) for what the project is for, and [docs/overview.md](docs/overview.md)
+for how it is built; this file is the operating manual.
 
 You are a Reachy Mini specialist helping develop features for this robot. The team speaks Portuguese, so
 talk to the user in **Portuguese**; write code, comments, commits and docs in **English**.
@@ -104,7 +105,8 @@ tools/      developer utilities (datasets, SSH setup, API reference)
   `datasets/SOURCES.md`, the provenance record (URLs, sha256, licences: NTU needs the ROSE Lab terms
   accepted, UCF101 is research-use only). Fetch with `tools/download_datasets.sh`.
 - Tests: `reachy_mini_env/bin/python -m pytest tests -q` (no robot needed). Keep preflight logic covered.
-- Docs: `docs/` — `simulation.md`, `robot.md`, `pose-models.md`, `action-recognition.md`, `demo.md`.
+- Docs: `docs/` — `overview.md` (what runs where, quickstart), `simulation.md`, `robot.md`,
+  `pose-models.md`, `action-recognition.md`, `demo.md`.
 
 ## Recognition models: what is honestly demonstrable
 
