@@ -21,7 +21,8 @@ from core.motion.forest import export_forest
 from training.public_data import HMDB_WAVE_LABEL, NTU_WAVE_LABEL, dataset_windows
 from training.train import classification_metrics, make_model
 
-DEFAULT_OUT = Path(__file__).resolve().parents[1] / "models" / "wave_classifier_ntu.joblib"
+# Models live in core/, not next to the trainer: core/ is what ships to the robot.
+DEFAULT_OUT = Path(__file__).resolve().parents[1] / "core" / "models" / "wave_classifier_ntu.joblib"
 THRESHOLDS = [round(0.05 * i, 2) for i in range(1, 19)]
 
 

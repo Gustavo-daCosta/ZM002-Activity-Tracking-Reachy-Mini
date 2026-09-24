@@ -8,7 +8,7 @@ from core.motion import OTHER, PAUSE, WAVE  # noqa: F401  (re-exported for recor
 from core.motion.features import window_features
 from core.motion.window import WINDOW_S, KeypointWindow, normalize_to_shoulders
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "wave"
+DATA_DIR = Path(__file__).resolve().parent / "data" / "wave"
 STEP_S = 0.25
 
 

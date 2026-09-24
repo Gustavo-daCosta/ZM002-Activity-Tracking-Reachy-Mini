@@ -44,7 +44,8 @@ from core.motion.forest import export_multiclass_forest
 
 FLOORS = [round(0.05 * step, 2) for step in range(1, 19)]   # 0.05 .. 0.90
 N_ESTIMATORS = 300
-MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
+# core/models, not training/models: the exported model is shipped with core/ to the robot.
+MODELS_DIR = Path(__file__).resolve().parents[2] / "core" / "models"
 DEFAULT_OUT = MODELS_DIR / "action_classifier.joblib"
 
 

@@ -14,7 +14,9 @@ set -euo pipefail
 SSH_HOST=${SSH_HOST:-reachy}
 REMOTE=${REMOTE:-/home/pollen/wave_app}
 VENV=${VENV:-/home/pollen/wave_env}
-REPO="$(cd "$(dirname "$0")" && pwd)"
+# This script lives in robot/, so the repo root is one level up. Deriving it from $0 without the "/.."
+# is how a move breaks every path below at once.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$REPO/reachy_mini_env/bin/python"
 
 FOLLOW="--follow"
