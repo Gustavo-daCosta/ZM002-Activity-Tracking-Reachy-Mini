@@ -5,9 +5,11 @@ Three deliberate differences from `core.motion.live.WaveMonitor`, for whoever wi
 * `panel_lines` is a **generator**, not a list: do not `len()` it and do not iterate it twice.
 * `antennas(now)` returns the **neutral-offset** target, ready to command, while
   `WaveMonitor.antennas` returns raw offsets. Do not add `NEUTRAL_ANTENNAS` to it again.
-* there is no evaluation throttle (`WaveMonitor.eval_interval_s`): every frame is classified. At the
-  robot's ~10 FPS that is affordable -- `update()` measures a mean of 0.23 ms and a max of 1.4 ms on the
-  Mac against a 100 ms frame budget -- but a much faster camera would want one.
+* there is no evaluation throttle (`WaveMonitor.eval_interval_s`): every frame is classified. Measured on
+  the robot (Raspberry Pi CM4, 452 frames at 8.7 FPS), `update()` costs a mean of 25.3 ms and a p95 of
+  34.6 ms, against 34.7 ms for pose and a ~115 ms frame budget -- affordable, but 42% of the loop and
+  roughly six times the wave monitor's 4.4 ms, because this walks 300 trees over a 3 s window on every
+  frame. The Mac figure is 0.23 ms, so do not size anything from it. A faster camera would want a throttle.
 """
 
 import time
