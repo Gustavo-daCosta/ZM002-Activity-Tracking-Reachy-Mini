@@ -8,7 +8,7 @@
 # Env vars: REACHY_HOST (robot IP/hostname, for the ping and the browser URL) and SSH_HOST (the ssh alias
 # or host used to reach it; defaults to the "reachy" alias). If DHCP moved the robot, set both.
 #
-# What to expect and what to do when it breaks: DEMO.md
+# What to expect and what to do when it breaks: docs/demo.md
 set -euo pipefail
 
 SSH_HOST=${SSH_HOST:-reachy}
