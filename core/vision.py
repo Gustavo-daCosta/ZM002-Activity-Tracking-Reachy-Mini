@@ -1,4 +1,4 @@
-"""Laptop webcam + MediaPipe Pose Landmarker helpers (stand-in for the robot camera in simulation)."""
+"""Webcam access, pose model downloads and drawing helpers."""
 
 import sys
 import time
@@ -15,21 +15,13 @@ MODEL_URLS = {
     "pose_landmarker_full/float16/1/pose_landmarker_full.task",
 }
 
-NOSE = 0
-
-# Upper body only: the webcam rarely sees legs.
-POSE_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 7), (0, 4), (4, 5), (5, 6), (6, 8), (9, 10),
-    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24),
-]
-
-
 # Cameras are selected by name: on macOS the OpenCV indices change when the iPhone (Continuity Camera)
-# connects or disconnects, but "FaceTime" always matches the built-in Mac camera.
+# connects, but "FaceTime" always matches the built-in camera.
 DEFAULT_CAMERA = "FaceTime"
 
 
 def add_camera_argument(parser):
+    """Add the `--camera` option to an argparse parser."""
     parser.add_argument(
         "--camera", default=DEFAULT_CAMERA,
         help=f"camera name substring or OpenCV index (default {DEFAULT_CAMERA!r}; see camera_check --list)",
@@ -45,7 +37,18 @@ def list_cameras() -> list:
 
 
 def resolve_camera(spec: str, cameras=None) -> int:
-    """A numeric spec is an OpenCV index; anything else is a case-insensitive substring of the camera name."""
+    """Map a camera spec to an OpenCV index.
+
+    Args:
+        spec: A numeric index, or a case-insensitive substring of the camera name.
+        cameras: (index, name) pairs; None lists them.
+
+    Returns:
+        The OpenCV index.
+
+    Raises:
+        ValueError: No camera matches, or several do.
+    """
     if spec.isdigit():
         return int(spec)
     cameras = list_cameras() if cameras is None else cameras
@@ -59,6 +62,11 @@ def resolve_camera(spec: str, cameras=None) -> int:
 
 
 def open_camera(spec, width: int = 640, height: int = 480) -> cv2.VideoCapture:
+    """Open a webcam by spec (see `resolve_camera`) at the requested size.
+
+    Raises:
+        RuntimeError: The camera could not be opened.
+    """
     index = resolve_camera(str(spec))
     cap = cv2.VideoCapture(index)
     if not cap.isOpened():
@@ -74,7 +82,11 @@ def open_camera(spec, width: int = 640, height: int = 480) -> cv2.VideoCapture:
 
 
 def download_model(filename: str, url: str) -> Path:
-    """Return models/<filename>, downloading it on first use (atomically, no partial files)."""
+    """Return models/<filename>, downloading it atomically on first use.
+
+    Raises:
+        SystemExit: The download failed (with manual instructions).
+    """
     path = MODELS_DIR / filename
     if path.exists():
         return path
@@ -101,17 +113,20 @@ class PoseDetector:
     """MediaPipe PoseLandmarker in VIDEO mode (uses tracking between frames)."""
 
     def __init__(self, variant: str = "lite"):
-        # Imported here, not at module level: the mediapipe aarch64 binaries abort on the robot's CPU
-        # (no AES extensions), and the robot only imports this module for its camera/drawing helpers.
+        """Create the landmarker.
+
+        Args:
+            variant: "lite" or "full".
+        """
+        # Imported here: the mediapipe aarch64 binaries abort on the robot's CPU (no AES extensions).
         import mediapipe as mp
 
         self._mp = mp
         vision = mp.tasks.vision
         options = vision.PoseLandmarkerOptions(
-            # CPU delegate: the GPU/Metal delegate crashes on macOS.
             base_options=mp.tasks.BaseOptions(
                 model_asset_path=str(model_path(variant)),
-                delegate=mp.tasks.BaseOptions.Delegate.CPU,
+                delegate=mp.tasks.BaseOptions.Delegate.CPU,  # the GPU delegate crashes on macOS
             ),
             running_mode=vision.RunningMode.VIDEO,
             num_poses=1,
@@ -134,16 +149,8 @@ class PoseDetector:
         return result.pose_landmarks[0] if result.pose_landmarks else None
 
     def close(self):
+        """Release the landmarker."""
         self._landmarker.close()
-
-
-def draw_pose(frame, landmarks):
-    h, w = frame.shape[:2]
-    points = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
-    for a, b in POSE_CONNECTIONS:
-        cv2.line(frame, points[a], points[b], (0, 255, 0), 2)
-    for p in points[:25]:
-        cv2.circle(frame, p, 3, (0, 0, 255), -1)
 
 
 # COCO-17 skeleton (see core.pose_backends.COCO_KEYPOINTS for the index order).
@@ -167,4 +174,5 @@ def draw_coco_skeleton(frame, keypoints, min_score):
 
 
 def put_text(frame, text, row, color=(255, 255, 255)):
+    """Draw one line of overlay text at row `row` (1-based)."""
     cv2.putText(frame, text, (10, 25 * row), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)

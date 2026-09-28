@@ -1,16 +1,10 @@
-"""MoveNet Lightning int8 on TFLite/XNNPACK: the fast path on the robot.
+"""MoveNet Lightning int8 on TFLite/XNNPACK: the fast path on the robot (~34 ms vs ~95 ms on onnxruntime).
 
-onnxruntime on the robot only has the plain CPU provider (~95 ms per frame for MoveNet fp32). The same model
-quantized to int8 under LiteRT's XNNPACK delegate runs in ~34 ms on the Cortex-A72, and its keypoints stay
-within ~2 % of the frame width of the fp32 ones - well inside the tolerance of shoulder-normalized features.
-
-Model: huggingface.co/nxp/movenet-imx (original_model/movenet_quant.tflite), uint8 [1,192,192,3] in,
-float [1,1,17,3] out (y, x, score) - same layout as the ONNX export, so the decoding is shared.
+Model: huggingface.co/nxp/movenet-imx (movenet_quant.tflite), uint8 [1,192,192,3] in, float [1,1,17,3]
+out, same layout as the ONNX export so the decoding is shared.
 """
 
 import time
-
-import numpy as np
 
 from core.pose_backends import PoseResult
 from core.pose_backends.movenet import INPUT_SIZE, decode_keypoints, letterbox
@@ -21,10 +15,13 @@ MODEL_URL = "https://huggingface.co/nxp/movenet-imx/resolve/main/original_model/
 
 
 class MoveNetTFLiteBackend:
+    """MoveNet int8 on the LiteRT interpreter."""
+
     name = "movenet-tflite"
     default_min_score = 0.3
 
     def __init__(self, threads=4):
+        """Load the interpreter, downloading the model on first use."""
         from ai_edge_litert.interpreter import Interpreter
 
         path = download_model(MODEL_FILE, MODEL_URL)
@@ -34,6 +31,7 @@ class MoveNetTFLiteBackend:
         self._output = self._interpreter.get_output_details()[0]
 
     def infer(self, frame_bgr) -> PoseResult:
+        """Run the model on one BGR frame."""
         start = time.perf_counter()
         square, scale, pad = letterbox(frame_bgr, INPUT_SIZE)
         self._interpreter.set_tensor(self._input["index"], square[None].astype(self._input["dtype"]))
@@ -46,4 +44,5 @@ class MoveNetTFLiteBackend:
         return PoseResult(keypoints=keypoints, timings={"pose": ms})
 
     def close(self):
+        """Drop the interpreter."""
         self._interpreter = None

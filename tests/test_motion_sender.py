@@ -4,8 +4,12 @@ import time
 
 import pytest
 
-from core.motion.reaction import AntennaWave, NEUTRAL_ANTENNAS
+from core.motion.reaction import AntennaWave, NEUTRAL_ANTENNAS, antennas_with_neutral
 from core.motion.sender import TargetSender
+
+
+def antennas_of(reaction):
+    return lambda now: antennas_with_neutral(reaction.angles(now))
 
 
 class FakeMini:
@@ -18,7 +22,7 @@ class FakeMini:
 
 def test_sends_at_its_own_rate_while_the_caller_is_busy():
     mini, reaction = FakeMini(), AntennaWave()
-    with TargetSender(mini, reaction, rate_hz=200):
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200):
         time.sleep(0.2)  # a single slow "vision frame"
 
     assert len(mini.calls) >= 10
@@ -26,7 +30,7 @@ def test_sends_at_its_own_rate_while_the_caller_is_busy():
 
 def test_neutral_antennas_when_no_wave_is_running():
     mini, reaction = FakeMini(), AntennaWave()
-    with TargetSender(mini, reaction, rate_hz=200):
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200):
         time.sleep(0.05)
 
     assert all(antennas == list(NEUTRAL_ANTENNAS) for _, antennas, _ in mini.calls)
@@ -34,7 +38,7 @@ def test_neutral_antennas_when_no_wave_is_running():
 
 def test_wave_makes_the_antennas_move_between_sends():
     mini, reaction = FakeMini(), AntennaWave(amplitude_deg=20, freq_hz=1.5)
-    with TargetSender(mini, reaction, rate_hz=200):
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200):
         reaction.trigger(time.perf_counter())
         time.sleep(0.3)
 
@@ -44,7 +48,7 @@ def test_wave_makes_the_antennas_move_between_sends():
 
 def test_forwards_the_latest_head_pose():
     mini, reaction = FakeMini(), AntennaWave()
-    with TargetSender(mini, reaction, rate_hz=200) as sender:
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200) as sender:
         sender.head = "pose-a"
         time.sleep(0.05)
 
@@ -53,7 +57,7 @@ def test_forwards_the_latest_head_pose():
 
 def test_stops_sending_after_the_context_exits():
     mini, reaction = FakeMini(), AntennaWave()
-    with TargetSender(mini, reaction, rate_hz=200):
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200):
         time.sleep(0.05)
     count = len(mini.calls)
     time.sleep(0.05)
@@ -65,7 +69,7 @@ def test_body_yaw_is_forwarded_in_radians():
     import math
 
     mini, reaction = FakeMini(), AntennaWave()
-    with TargetSender(mini, reaction, rate_hz=200) as sender:
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200) as sender:
         sender.body_yaw_deg = 30.0
         time.sleep(0.05)
 
@@ -74,7 +78,7 @@ def test_body_yaw_is_forwarded_in_radians():
 
 def test_body_yaw_is_none_until_the_caller_sets_it():
     mini, reaction = FakeMini(), AntennaWave()
-    with TargetSender(mini, reaction, rate_hz=200):
+    with TargetSender(mini, antennas_of(reaction), rate_hz=200):
         time.sleep(0.03)
 
     assert all(body is None for _, _, body in mini.calls)

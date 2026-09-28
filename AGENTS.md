@@ -84,9 +84,9 @@ tools/      developer utilities (datasets, SSH setup, API reference)
 - `robot/` — `connect.py` (`ROBOT_IP`, `resolve_host()`, `connect_robot(media, sleep_on_exit, needs)`,
   `RobotNotReady`), `preflight.py` (state check/fix CLI, stdlib only), `apps/` (runnable entry points:
   antennas, explore, head_tracking, head_tracking_video, look_at_click, wave_antennas,
-  action_recognition), `deploy.sh` and `demo.sh`. Run an app with
+  action_recognition; the last two share `apps/common.py`), `deploy.sh` and `demo.sh`. Run an app with
   `reachy_mini_env/bin/python -m robot.apps.<name>`; new ones follow the same pattern.
-- `sim/` — `start.sh` plus `head_tracking`, `body_tracking`, `pose_viewer`, `camera_check`. No robot and no
+- `sim/` — `start.sh` plus `body_tracking` and `camera_check`. No robot and no
   preflight: the daemon runs on `localhost`. `body_tracking --model
   blazepose-lite|blazepose-full|vitpose-s` follows the torso and compares pose models; `--detect-wave` and
   `--detect-actions` add recognition with the antennas answering. The webcam is selected **by name**
@@ -100,7 +100,7 @@ tools/      developer utilities (datasets, SSH setup, API reference)
   (aarch64: mediapipe must be **1.0.1**, but BlazePose cannot run on this CPU at all — see below) and
   `training.txt` (scikit-learn, which the test suite also needs). Every pin is explained in place.
 - `core/models/` — the `.npz` forests are **tracked** (nothing runs without them); pose weights (`.onnx`,
-  `.tflite`, `.task`) download on first run and the `.joblib` bundles are retraining-only. See `.gitignore`.
+  `.tflite`, `.task`) download on first run. See `.gitignore`.
 - `datasets/` — 1.8 GB of HRNet COCO-17 skeleton pickles (NTU RGB+D 60, UCF101, HMDB51), gitignored except
   `datasets/SOURCES.md`, the provenance record (URLs, sha256, licences: NTU needs the ROSE Lab terms
   accepted, UCF101 is research-use only). Fetch with `tools/download_datasets.sh`.

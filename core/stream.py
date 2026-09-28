@@ -1,9 +1,4 @@
-"""MJPEG preview server: watch what the robot's camera sees, with the model overlay, from another machine.
-
-The robot has no display, and sending raw frames back would need a second video pipeline. Instead the robot
-annotates the frame it just processed and serves it as multipart JPEG, so any browser on the same network can
-open http://<robot>:<port>/ and watch. Encoding a 640x360 frame costs a few milliseconds.
-"""
+"""MJPEG preview server: watch the robot camera with the model overlay from a browser on the network."""
 
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,9 +13,17 @@ img{max-width:100%;max-height:100vh}</style></head>
 
 
 class MjpegServer:
-    """Holds the latest frame; every connected client gets it as fast as it can consume it."""
+    """Holds the latest JPEG; every connected client gets it as fast as it can consume it."""
 
     def __init__(self, port=8080, host="0.0.0.0", quality=70, fps=15.0):
+        """Bind the server (not started yet).
+
+        Args:
+            port: TCP port (0 = any free port).
+            host: Bind address.
+            quality: JPEG quality.
+            fps: Unused pacing hint kept for callers.
+        """
         self._jpeg = None
         self._condition = threading.Condition()
         self._quality = quality
@@ -31,13 +34,11 @@ class MjpegServer:
 
     @property
     def port(self):
+        """The bound port."""
         return self._server.server_address[1]
 
-    @property
-    def url(self):
-        return f"http://localhost:{self.port}/stream.mjpg"
-
     def start(self):
+        """Start serving and return self."""
         self._thread.start()
         return self
 
@@ -49,6 +50,7 @@ class MjpegServer:
         return False
 
     def close(self):
+        """Stop serving and release the socket."""
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=2.0)
@@ -109,7 +111,7 @@ def _make_handler(server):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
-        def log_message(self, *args):  # keep the robot's stdout for the wave log
-            pass
+        def log_message(self, *args):
+            pass  # keep stdout for the app's own log
 
     return Handler

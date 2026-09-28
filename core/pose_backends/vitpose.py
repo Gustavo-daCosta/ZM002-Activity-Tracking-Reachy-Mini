@@ -1,7 +1,7 @@
-"""ViTPose-S (COCO, ONNX): top-down pose — person detector first, then keypoints on the person crop.
+"""ViTPose-S (COCO, ONNX): top-down pose, person detector first, then keypoints on the person crop.
 
-Pre/post-processing follows easy_ViTPose (github.com/JunkyByte/easy_ViTPose): RGB, /255, ImageNet mean/std,
-3:4 crop, heatmap argmax decoded with UDP coordinates.
+Pre/post-processing follows easy_ViTPose (github.com/JunkyByte/easy_ViTPose): RGB, /255, ImageNet
+mean/std, 3:4 crop, heatmap argmax decoded with UDP coordinates.
 """
 
 import time
@@ -14,6 +14,14 @@ from core.pose_backends import PoseResult
 INPUT_W, INPUT_H = 192, 256
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 STD = np.array([0.229, 0.224, 0.225], np.float32)
+
+DETECTOR_FILE = "efficientdet_lite0.tflite"
+DETECTOR_URL = (
+    "https://storage.googleapis.com/mediapipe-models/object_detector/"
+    "efficientdet_lite0/float16/1/efficientdet_lite0.tflite"
+)
+POSE_FILE = "vitpose-s-coco.onnx"
+POSE_URL = "https://huggingface.co/JunkyByte/easy_ViTPose/resolve/main/onnx/coco/vitpose-s-coco.onnx"
 
 
 def box_to_crop(box, padding=1.25):
@@ -30,7 +38,7 @@ def box_to_crop(box, padding=1.25):
 
 
 def crop_affine(cx, cy, w, h):
-    """2x3 matrix for cv2.warpAffine: crop region -> INPUT_W x INPUT_H (outside the frame is padded black)."""
+    """2x3 matrix for cv2.warpAffine: crop region -> INPUT_W x INPUT_H (outside the frame is black)."""
     sx, sy = INPUT_W / w, INPUT_H / h
     return np.array(
         [[sx, 0.0, -(cx - w / 2) * sx], [0.0, sy, -(cy - h / 2) * sy]],
@@ -39,6 +47,7 @@ def crop_affine(cx, cy, w, h):
 
 
 def preprocess(crop_bgr):
+    """BGR crop -> normalized NCHW float32 input."""
     rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
     return ((rgb - MEAN) / STD).transpose(2, 0, 1)[None].astype(np.float32)
 
@@ -64,25 +73,20 @@ def heatmaps_to_keypoints(heatmaps, cx, cy, w, h, frame_w, frame_h):
 
 
 def largest_box(boxes):
+    """The box with the largest area, or None."""
     if not boxes:
         return None
     return max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
 
 
-DETECTOR_FILE = "efficientdet_lite0.tflite"
-DETECTOR_URL = (
-    "https://storage.googleapis.com/mediapipe-models/object_detector/"
-    "efficientdet_lite0/float16/1/efficientdet_lite0.tflite"
-)
-POSE_FILE = "vitpose-s-coco.onnx"
-POSE_URL = "https://huggingface.co/JunkyByte/easy_ViTPose/resolve/main/onnx/coco/vitpose-s-coco.onnx"
-
-
 class ViTPoseBackend:
+    """EfficientDet-Lite0 person detector (MediaPipe) + ViTPose-S (onnxruntime), CPU only."""
+
     name = "vitpose-s"
     default_min_score = 0.3  # heatmap peaks are lower than BlazePose visibility
 
     def __init__(self):
+        """Load both models, downloading them on first use."""
         import mediapipe as mp
         import onnxruntime as ort
 
@@ -102,7 +106,6 @@ class ViTPoseBackend:
                 max_results=3,
             )
         )
-        # CPU only: comparable with the Raspberry Pi, and avoids CoreML differences on macOS.
         self._session = ort.InferenceSession(
             str(download_model(POSE_FILE, POSE_URL)), providers=["CPUExecutionProvider"]
         )
@@ -118,6 +121,7 @@ class ViTPoseBackend:
         return largest_box(boxes)
 
     def infer(self, frame_bgr) -> PoseResult:
+        """Detect the largest person, then run ViTPose on its crop."""
         frame_h, frame_w = frame_bgr.shape[:2]
         start = time.perf_counter()
         box = self._detect_person(frame_bgr)
@@ -135,4 +139,5 @@ class ViTPoseBackend:
         return PoseResult(keypoints=keypoints, box=normalized_box, timings=timings)
 
     def close(self):
+        """Release the detector."""
         self._detector.close()

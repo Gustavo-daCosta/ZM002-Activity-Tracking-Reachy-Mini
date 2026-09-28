@@ -1,21 +1,18 @@
 """Body tracking on the simulated Reachy Mini, with interchangeable pose models for comparison.
 
-The laptop webcam stands in for the robot camera. The selected pose model finds the person, the robot
-follows the center of the torso (fallback: shoulders, then nose), and the camera window shows the model
-output with live timings. A summary is printed on exit.
+The laptop webcam stands in for the robot camera. The robot follows the center of the torso (fallback:
+shoulders, then nose) and the window shows the model output with live timings.
 
     # terminal 1
     sim/start.sh
     # terminal 2
     reachy_mini_env/bin/python -m sim.body_tracking --model blazepose-lite
     reachy_mini_env/bin/python -m sim.body_tracking --model vitpose-s
-    reachy_mini_env/bin/python -m sim.body_tracking --detect-wave   # + wave recognition (antennas wave back)
+    reachy_mini_env/bin/python -m sim.body_tracking --detect-wave     # + wave recognition (antennas wave back)
     reachy_mini_env/bin/python -m sim.body_tracking --detect-actions  # + six-class action recognition
 
-`--detect-actions` recognizes wave, clapping, squat, jumping jacks and (nominally) push-ups, each with its
-own antenna signature. Stand back far enough for your legs to be in frame: squats and push-ups have no
-usable signal without them. The camera is selected by NAME (`--camera FaceTime`), never by index, because
-OpenCV's indices move when an iPhone connects through Continuity Camera.
+The camera is selected by NAME (`--camera FaceTime`), never by index: OpenCV's indices move when an
+iPhone connects through Continuity Camera.
 """
 
 import argparse
@@ -31,6 +28,7 @@ from core.vision import add_camera_argument, draw_coco_skeleton, open_camera, pu
 
 
 def parse_args(argv=None):
+    """Parse the command line."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", choices=list(BACKENDS), default="blazepose-lite", help="pose model")
     add_camera_argument(parser)
@@ -53,6 +51,7 @@ def parse_args(argv=None):
 
 
 def draw_overlay(frame, result, target, min_score, panel, model, yaw, pitch, extra_lines=()):
+    """Draw the person box, skeleton, target marker and the stats panel."""
     h, w = frame.shape[:2]
     if result.box is not None:
         x0, y0, x1, y1 = result.box
@@ -75,10 +74,10 @@ def draw_overlay(frame, result, target, min_score, panel, model, yaw, pitch, ext
 
 
 def main():
+    """Entry point."""
     args = parse_args()
 
-    # Import the SDK late so --help works instantly.
-    from reachy_mini import ReachyMini
+    from reachy_mini import ReachyMini  # late import so --help is instant
     from reachy_mini.utils import create_head_pose
 
     cap = open_camera(args.camera)
@@ -105,13 +104,10 @@ def main():
             raise SystemExit(str(exc))
         print(f"Wave recognition on (trigger: {monitor.trigger_name})")
     if args.detect_actions:
-        # The ActionMonitor itself is built on the first frame: its aspect ratio must be the camera's real
-        # one and open_camera's requested 640x480 is only a request. Checking the model here keeps the
-        # "no model" failure out of the loop.
+        # The ActionMonitor is built on the first frame: it needs the camera's real aspect ratio.
         from core.motion.actions.detector import DEFAULT_ACTION_MODEL, ActionDetector
 
         action_model = args.action_model or DEFAULT_ACTION_MODEL
-        # Built once and reused by the ActionMonitor below, so the .npz is parsed a single time.
         action_detector = ActionDetector(action_model)
         if not action_detector.available:
             backend.close()
@@ -153,7 +149,7 @@ def main():
                 angles = None
                 if target is not None:
                     angles = image_error_to_angles(target[0], target[1], args.max_yaw, args.max_pitch, args.deadzone)
-                yaw, pitch = follower.update(angles)  # no target: drift back to center
+                yaw, pitch = follower.update(angles)
 
                 now = time.perf_counter()
                 timings = result.timings
@@ -167,7 +163,6 @@ def main():
                     mini.set_target(head=create_head_pose(yaw=yaw, pitch=pitch, degrees=True), antennas=antennas)
                     last_update = now
 
-                # ActionMonitor.panel_lines is a generator: materialize it, never iterate it twice.
                 extra_lines = list(monitor.panel_lines(now)) if monitor is not None else ()
                 draw_overlay(frame, result, target, min_score, stats.window_summary(), backend.name, yaw, pitch,
                              extra_lines)
@@ -187,8 +182,6 @@ def main():
                 print(f"  wave triggers: rules {monitor.triggers['rules']}, classifier {monitor.triggers['classifier']}"
                       f" (robot reacted to {monitor.trigger_name})")
             elif monitor is not None:
-                # Recognitions, not antenna answers: an occurrence detected while another reaction is still
-                # swinging is counted but deliberately left unanswered.
                 counts = " ".join(f"{action}:{count}" for action, count in monitor.counts.items() if count)
                 print(f"  actions recognized: {counts or '-'}")
 

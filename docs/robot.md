@@ -41,8 +41,8 @@ sample the wave smoothly and the movement looked stepped. Measured on the robot:
 |---|---|---|
 | `mediapipe` | 1.0.1 installs, **but cannot run** | Measured 2026-09-21 on the robot: `FATAL ERROR: This binary was compiled with aes enabled, but this feature is not available on this processor`. The CM4's Cortex-A72 exposes only `fp asimd evtstrm crc32 cpuid` — no AES/SHA. 0.10.35 has no aarch64 wheel at all. **BlazePose is therefore impossible on this robot.** |
 | `onnxruntime==1.27.0` | ✓ (and already used by the daemon) | runs the replacement pose model |
-| `scikit-learn==1.9.1` | ✓ | must match the version that wrote the joblib pickle |
-| `joblib`, `numpy`, `scipy`, `opencv-contrib-python` | ✓ | pulled in as dependencies |
+| `scikit-learn==1.9.1` | ✓ | not installed: the robot runs the `.npz` forest export |
+| `numpy`, `scipy`, `opencv-contrib-python` | ✓ | pulled in as dependencies |
 | `rustypot` (reachy_mini dep) | ✓ (manylinux_2_17) | fine when pip runs on the robot |
 | `gstreamer_cli` (via `gstreamer_bundle`) | ✗ no Linux wheel | so `reachy_mini` **cannot be pre-downloaded from the Mac**; on Linux its markers differ, so a native `pip install` on the robot should work — otherwise fall back to the apps venv `.pth` (handled by the script, step 5). |
 

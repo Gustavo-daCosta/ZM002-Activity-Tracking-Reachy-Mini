@@ -16,7 +16,15 @@ ARMS = ((9, 5, 7), (10, 6, 8))
 
 
 def count_reversals(values, hysteresis):
-    """Direction changes in a 1D signal; a change counts only after moving back more than `hysteresis`."""
+    """Count direction changes in a 1D signal.
+
+    Args:
+        values: The signal.
+        hysteresis: A change counts only after moving back more than this.
+
+    Returns:
+        Number of reversals.
+    """
     if len(values) < 2:
         return 0
     direction = 0  # +1 rising, -1 falling, 0 not established
@@ -42,12 +50,21 @@ def count_reversals(values, hysteresis):
 
 
 def amplitude(values):
-    """Robust peak-to-peak: the 10th-to-90th percentile span, so one bad keypoint cannot inflate it."""
+    """Robust peak-to-peak: the 10th-to-90th percentile span."""
     return float(np.percentile(values, 90) - np.percentile(values, 10))
 
 
 def window_features(times, keypoints, min_score=0.5):
-    """Features dict (FEATURE_NAMES order) of a window from KeypointWindow.frames(), or None if not enough data."""
+    """Compute the wave features of a window.
+
+    Args:
+        times: (frames,) timestamps from `KeypointWindow.frames()`.
+        keypoints: (frames, 17, 3) normalized keypoints, NaN rows for rejected frames.
+        min_score: Wrist/elbow confidence threshold.
+
+    Returns:
+        Dict in `FEATURE_NAMES` order, or None without enough data.
+    """
     if len(times) < 2:
         return None
     span = float(times[-1] - times[0])
@@ -91,4 +108,5 @@ def window_features(times, keypoints, min_score=0.5):
 
 
 def features_vector(features):
+    """The feature dict as a float32 vector in `FEATURE_NAMES` order."""
     return np.array([features[name] for name in FEATURE_NAMES], np.float32)

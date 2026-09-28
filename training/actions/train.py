@@ -2,31 +2,15 @@
 
     reachy_mini_env/bin/python -m training.actions.train \
         --ntu datasets/ntu60_hrnet.pkl --ucf datasets/ucf101_hrnet.pkl \
-        --hmdb datasets/hmdb51_2d.pkl --max-clips-per-class 3 \
-        --out core/models/action_classifier.joblib
+        --hmdb datasets/hmdb51_2d.pkl --max-clips-per-class 3 --crop-fraction 0.25
 
-Validation is grouped by person, never by window: windows from one clip overlap heavily, and a random
-split would put near-duplicates on both sides and report a score we would not see live.
+Validation is grouped by person: windows from one clip overlap heavily and a random split would report a
+score we would not see live.
 
-**Why this module prints as much diagnosis as it prints score.** Squats, push-ups and jumping jacks exist
-only in handheld UCF101 footage; waving and clapping only in studio NTU footage. A forest can therefore
-score well by learning which *dataset* a window came from rather than which action it shows, and no data
-loader can fix that, because the correlation is in the world: we have no studio squats. So three numbers
-are reported next to every score and are as much the deliverable as the score is.
-
-  * **Per-source `none` recall.** `none` is the one class drawn from both datasets. If NTU negatives and
-    UCF101 negatives score very differently, the model is partly a camera detector and the per-class table
-    is measuring the camera.
-  * **Feature importances.** A top feature that plausibly describes the footage rather than the movement is
-    the same finding seen from the other side. Two are known suspects: `wrist_y_reversal_rate` retains
-    corr(span) = +0.148 and `hip_y_reversal_rate` +0.101.
-  * **Per-fold scores for every class.** `pushup` rests on 19 groups and ~134 windows, by far the thinnest
-    class, and a pooled F1 hides how much it moves between folds. Its variance is the honest number.
-
-`span` (how much of the 3 s window actually accumulated) is deliberately **not** a feature: it correlates
-with both source and class, so a column would hand the forest a "short window => NTU => wave or clapping"
-shortcut that still generalizes within a dataset. It is recorded per window and its correlation with the
-predictions is reported, which is how such a shortcut would show up if the features leaked it anyway.
+Squats, push-ups and jumping jacks exist only in handheld UCF101 footage; waving and clapping only in
+studio NTU footage. A forest can therefore learn which *dataset* a window came from, so the report also
+gives per-source `none` recall, feature importances, per-fold scores and the correlation of the
+predictions with the window span (deliberately not a feature).
 """
 
 import argparse
@@ -35,29 +19,22 @@ from pathlib import Path
 import numpy as np
 
 from core.motion.actions import ACTION_WINDOW_S, ACTIONS, NONE
-from training.actions.datasets import CROP_LEVELS, hmdb_windows, ntu_windows, ucf_windows
 from core.motion.actions.features import (
     ACTION_FEATURE_NAMES, action_features, action_features_vector,
 )
 from core.motion.actions.normalize import normalize_to_torso, trunk_height_parts
-from core.motion.forest import export_multiclass_forest
+from core.motion.forest import export_forest
+from training.actions.datasets import CROP_LEVELS, hmdb_windows, ntu_windows, ucf_windows
 
-FLOORS = [round(0.05 * step, 2) for step in range(1, 19)]   # 0.05 .. 0.90
+FLOORS = [round(0.05 * step, 2) for step in range(1, 19)]
 N_ESTIMATORS = 300
-# core/models, not training/models: the exported model is shipped with core/ to the robot.
+# core/models, not training/models: the exported model ships with core/ to the robot.
 MODELS_DIR = Path(__file__).resolve().parents[2] / "core" / "models"
-DEFAULT_OUT = MODELS_DIR / "action_classifier.joblib"
-
-
-# --- arrays -----------------------------------------------------------------------------------------
+DEFAULT_OUT = MODELS_DIR / "action_classifier.npz"
 
 
 def to_arrays(windows):
-    """(X, y, groups) from (features, label, group) triples, in ACTION_FEATURE_NAMES order.
-
-    `action_features_vector` selects by name, so the `span` diagnostic that rides along in every features
-    dict is dropped here and cannot become a 35th column by accident.
-    """
+    """(X, y, groups) from (features, label, group) triples, in `ACTION_FEATURE_NAMES` order."""
     X = np.array([action_features_vector(features) for features, _, _ in windows], np.float32)
     y = np.array([label for _, label, _ in windows], dtype=object)
     groups = np.array([group for _, _, group in windows], dtype=object)
@@ -65,26 +42,22 @@ def to_arrays(windows):
 
 
 def spans_of(windows):
-    """The per-window span in seconds, for diagnostics only. Missing (0.0) if a window lacks it."""
+    """Per-window span in seconds (0.0 when missing); diagnostics only."""
     return np.array([float(features.get("span", 0.0)) for features, _, _ in windows], np.float64)
 
 
 def crops_of(windows):
-    """The per-window crop regime, for reporting the regimes apart. "full" if a window does not say."""
+    """Per-window crop regime ("full" when missing)."""
     return [str(features.get("crop", "full")) for features, _, _ in windows]
 
 
 def _regime_order(name):
-    """`CROP_LEVELS` order, with anything else (e.g. "recorded") last."""
     return list(CROP_LEVELS).index(name) if name in CROP_LEVELS else len(CROP_LEVELS)
 
 
 def source_of(group):
-    """The dataset a group came from: the namespace prefix the loaders put on every group key."""
+    """The dataset a group came from: the namespace prefix of its key ("ntu:P001" -> "ntu")."""
     return str(group).split(":", 1)[0]
-
-
-# --- scoring ----------------------------------------------------------------------------------------
 
 
 def _predict_with_floors(probabilities, classes, floors):
@@ -97,6 +70,7 @@ def _predict_with_floors(probabilities, classes, floors):
 
 
 def _prf(predicted, actual, name):
+    """Precision, recall, F1 and support of one class."""
     true_positive = int(((predicted == name) & (actual == name)).sum())
     predicted_positive = int((predicted == name).sum())
     actual_positive = int((actual == name).sum())
@@ -122,18 +96,12 @@ def _confusion(predicted, actual, classes):
 def tune_floors(probabilities, y, classes):
     """Per-class confidence floor maximizing that class's F1 on out-of-fold probabilities.
 
-    Per class, not one global floor: waving is by far the most frequent class live, and a single floor lets
-    it outvote the rest. Each class is swept independently - the floors do interact through the argmax, and
-    accepting that is cheaper than a joint search for the gain it would buy.
-
-    The sweep is over **out-of-fold** probabilities and it maximizes F1, never anything prettier. Tuning a
-    floor on the same windows the trees were fitted on would produce floors that look excellent and hold
-    nothing live.
+    Each class is swept independently; `none` is the fallback and never gets a floor.
     """
     floors = {}
     for name in classes:
         if name == NONE:
-            floors[name] = 0.0   # `none` is the fallback, never a class that has to clear a bar
+            floors[name] = 0.0
             continue
         best, best_f1 = FLOORS[0], -1.0
         for candidate in FLOORS:
@@ -146,18 +114,11 @@ def tune_floors(probabilities, y, classes):
     return floors
 
 
-# --- grouped training -------------------------------------------------------------------------------
-
-
 def _fold_probabilities(model, X, y, train, test, classes):
-    """Fit on `train`, and return `test` probabilities in `classes` order plus the classes it never saw.
+    """Fit on `train`; return `test` probabilities in `classes` order plus the classes never seen.
 
-    The columns are placed by name. `predict_proba` orders its columns by the classes actually present in
-    the training half, which is neither `ACTIONS` order nor necessarily all of them: with 19 push-up groups
-    a fold can hold out every one of them, and the resulting matrix is then narrower than `classes`. A
-    positional copy would silently shift every class one column left - a model that reads well and predicts
-    nonsense. The absent classes get an all-zero column, which is the truth: that fold could not predict
-    them, and the report names it rather than averaging it away.
+    Columns are placed by name: `predict_proba` orders them by the classes present in the training half,
+    which can be fewer than `classes`. Absent classes get an all-zero column.
     """
     from sklearn.base import clone
 
@@ -173,20 +134,19 @@ def _fold_probabilities(model, X, y, train, test, classes):
 def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
     """Fit on everything, and score with out-of-fold predictions grouped by person.
 
-    `crop_fraction` is how much of the crop augmentation reaches the **training** half: 0.0 trains on
-    full-body windows only, 1.0 on every cropped copy as well. It never touches the evaluation half. That
-    asymmetry is the whole point of the parameter: generating fewer cropped windows instead would shrink
-    the test set as well, and the trade-off curve would then compare scores measured on different data. Here
-    every setting is scored on exactly the same windows, so the differences between settings are the
-    setting and nothing else.
+    Args:
+        windows: (features, label, group) triples.
+        n_splits: GroupKFold folds.
+        seed: Forest and crop-sampling seed.
+        crop_fraction: Share of the cropped windows a fold may *learn* from (0 = full-body only). The
+            evaluation half is never touched, so every setting is scored on the same windows.
 
-    Full-body framing is a supportable deployment mode -- the robot can be placed further back -- so the
-    cropped regime must not be bought with the full-body one. The curve is what says what it costs.
+    Returns:
+        Dict with the fitted `model`, `floors`, `classes`, pooled / per-fold / per-regime / per-source
+        reports and the diagnostics.
 
-    The folds are walked by hand rather than with `cross_val_predict` for two reasons: the per-fold scores
-    are a deliverable (see the module docstring on `pushup`), and `cross_val_predict` raises outright when a
-    fold's training half is missing a class, which is a live possibility here and is worth *reporting*
-    rather than crashing on.
+    Raises:
+        ValueError: Fewer groups than folds, or `crop_fraction` outside [0, 1].
     """
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import GroupKFold
@@ -199,8 +159,7 @@ def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
     if not 0.0 <= crop_fraction <= 1.0:
         raise ValueError(f"crop_fraction must be in [0, 1], got {crop_fraction}")
 
-    # Which rows a fold may *learn* from: every full-body window, plus a seeded sample of the cropped ones.
-    regimes = np.array(crops_of(windows), dtype=object)  # also used per fold and per regime below
+    regimes = np.array(crops_of(windows), dtype=object)
     trainable = regimes == "full"
     cropped_rows = np.flatnonzero(~trainable)
     if crop_fraction > 0 and len(cropped_rows):
@@ -213,6 +172,8 @@ def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
         n_estimators=N_ESTIMATORS, class_weight="balanced_subsample", random_state=seed, n_jobs=-1
     )
 
+    # Folds are walked by hand: per-fold scores are a deliverable, and `cross_val_predict` raises when a
+    # fold's training half lacks a class, which is worth reporting rather than crashing on.
     probabilities = np.zeros((len(y), len(classes)), np.float64)
     fold_index = np.full(len(y), -1, int)
     folds = []
@@ -231,15 +192,11 @@ def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
     floors = tune_floors(probabilities, y, classes)
     predicted = _predict_with_floors(probabilities, classes, floors)
 
-    # Per-fold scores, with the floors tuned on the pooled out-of-fold probabilities: the point is the
-    # spread of one class across folds, not a second, per-fold tuning that would hide it.
     for fold in folds:
         rows = fold_index == fold["fold"]
         present = [name for name in classes if (y[rows] == name).any()]
         fold["report"] = _report(predicted[rows], y[rows], present)
         fold["n_windows"] = int(rows.sum())
-        # Per regime as well as pooled: choosing between crop settings on a pooled full-body number
-        # invites reading fold noise as a difference, and the per-fold spread is what says which it is.
         fold["per_regime"] = {}
         for regime in sorted(set(regimes.tolist()), key=_regime_order):
             part = rows & (regimes == regime)
@@ -268,8 +225,6 @@ def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
             "n_windows": int(rows.sum()),
         }
 
-    # corr(span, predicted == class). Span is not a column; a prediction that tracks it anyway means some
-    # feature is carrying the same information and the model is partly reading clip length.
     span_correlation = {}
     for name in classes:
         indicator = (predicted == name).astype(np.float64)
@@ -297,7 +252,7 @@ def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
 
 
 def evaluate(model, windows, floors):
-    """Per-class scores of a fitted model on windows it never saw (an external test set)."""
+    """Per-class scores of a fitted model on windows it never saw."""
     X, y, _ = to_arrays(windows)
     classes = list(model.classes_)
     predicted = _predict_with_floors(model.predict_proba(X), classes, floors)
@@ -306,15 +261,12 @@ def evaluate(model, windows, floors):
 
 
 def evaluate_confusion(model, windows, floors):
-    """The external set's confusion matrix over the model's own classes, truth by row."""
+    """(classes, confusion matrix) of an external set, truth by row."""
     X, y, _ = to_arrays(windows)
     classes = list(model.classes_)
     predicted = _predict_with_floors(model.predict_proba(X), classes, floors)
     ordered = [name for name in ACTIONS if name in set(classes)]
     return ordered, _confusion(predicted, y, ordered)
-
-
-# --- reporting --------------------------------------------------------------------------------------
 
 
 def _table(report):
@@ -333,6 +285,7 @@ def _matrix(classes, confusion):
 
 
 def format_report(result):
+    """Render `train_grouped` output (plus any `external` sets) as text."""
     classes = result["classes"]
     lines = [
         f"{result['n_windows']} windows, {result['n_groups']} groups, {len(classes)} classes, "
@@ -414,46 +367,10 @@ def format_report(result):
     return "\n".join(lines)
 
 
-def format_sweep(rows, classes):
-    """The trade-off curve: one line per crop_fraction, full-body against cropped against the demo proxy.
-
-    Full-body is a supportable framing (place the robot further back), so a setting that rescues the
-    cropped regime by giving up full-body accuracy is trading something certain for something optional.
-    This table is what names that price.
-    """
-    lines = ["Crop-augmentation trade-off curve (all settings scored on the same windows):", ""]
-    for regime in ("full", "waist"):
-        lines += [f"  per-class F1, {regime} regime, held-out subjects:",
-                  "    frac  " + " ".join(f"{name[:9]:>9}" for name in classes)]
-        for row in rows:
-            report = row["per_regime"].get(regime, {}).get("report", {})
-            lines.append(f"    {row['crop_fraction']:<5.2f} " + " ".join(
-                f"{report.get(name, {}).get('f1', float('nan')):>9.3f}" for name in classes))
-        lines.append("")
-    lines += ["  the two numbers that decide it:",
-              f"    {'frac':<6}{'recorded wave f1':>18}{'waist squat recall':>20}"
-              f"{'full-body wave f1':>19}{'full-body mean f1':>19}"]
-    for row in rows:
-        full = row["per_regime"].get("full", {}).get("report", {})
-        mean = (sum(scores["f1"] for scores in full.values()) / len(full)) if full else float("nan")
-        lines.append(f"    {row['crop_fraction']:<6.2f}{row['recorded_wave_f1']:>18.3f}"
-                     f"{row['waist_squat_recall']:>20.3f}"
-                     f"{full.get('wave', {}).get('f1', float('nan')):>19.3f}{mean:>19.3f}")
-    return "\n".join(lines)
-
-
-# --- our own recordings -----------------------------------------------------------------------------
-
-
 def recorded_windows(data_dir=None):
-    """Our own robot-viewpoint recordings as action windows: they only contain waves and pauses.
+    """Our own robot-viewpoint recordings as action windows (waves and pauses only).
 
-    A wave scored here is the closest thing we have to the live demo: same camera height, same person,
-    footage the model has never seen. Everything that is not a wave is `none`.
-
-    Note the `extra=trunk_height_parts` channel: without it the two trunk-height features would silently be
-    their 0.0 sentinel here but not in training, and comparing a 34-feature model against a 32-feature
-    evaluation vector would make the number meaningless.
+    Tagged with the "recorded" crop regime and the "rec:" group namespace; used as an external test set.
     """
     from training.dataset import DATA_DIR, list_sessions, load_session, make_windows
 
@@ -464,20 +381,13 @@ def recorded_windows(data_dir=None):
             session, window_s=ACTION_WINDOW_S, features_of=action_features,
             normalizer=normalize_to_torso, extra=trunk_height_parts,
         ):
-            # Its own regime name: these frames are not a synthetic crop, they are what the robot's
-            # camera actually produced -- hips confident in 0.19 of frames, knees and ankles in none.
-            # Namespaced like every dataset group key (`ntu:P003`, `ucf:PushUps_g08`, `hmdb:<dir>`) so
-            # `source_of` reports a real source. These windows are an external test set and never reach
-            # `train_grouped` today, but an un-namespaced key would silently become the source "session0".
             out.append((dict(features, crop="recorded"), "wave" if label == 1 else NONE,
                         f"rec:session{index}"))
     return out
 
 
-# --- CLI --------------------------------------------------------------------------------------------
-
-
 def main():
+    """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ntu", required=True, help="path to ntu60_hrnet.pkl (wave, clapping)")
@@ -487,13 +397,9 @@ def main():
     parser.add_argument("--max-clips-per-class", type=int, default=3,
                         help="cap on clips per negative source class, per dataset")
     parser.add_argument("--splits", type=int, default=5, help="GroupKFold folds")
-    parser.add_argument("--crop-fraction", type=float, nargs="+", default=[1.0],
-                        help="how much of the crop augmentation reaches the training half; several "
-                             "values train several models and print the trade-off curve")
-    parser.add_argument("--ship", type=float, default=None,
-                        help="which crop_fraction's model to write to --out (default: the last one)")
+    parser.add_argument("--crop-fraction", type=float, default=0.25,
+                        help="share of the crop augmentation that reaches the training half (0..1)")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="where to write the model")
-    parser.add_argument("--report", default=None, help="also write the printed report to this file")
     args = parser.parse_args()
 
     print(f"Loading NTU windows from {args.ntu}...", flush=True)
@@ -508,62 +414,32 @@ def main():
     if args.hmdb:
         print(f"  {len(hmdb)} HMDB51 windows (external test set)", flush=True)
 
-    from core.motion.detectors import save_classifier
+    print(f"\nTraining with crop_fraction={args.crop_fraction}...", flush=True)
+    result = train_grouped(windows, n_splits=args.splits, crop_fraction=args.crop_fraction)
 
-    out = Path(args.out)
-    rows, texts = [], []
-    ship = args.crop_fraction[-1] if args.ship is None else args.ship
-    for fraction in args.crop_fraction:
-        print(f"\nTraining with crop_fraction={fraction}...", flush=True)
-        result = train_grouped(windows, n_splits=args.splits, crop_fraction=fraction)
+    result["external"], result["external_confusion"] = {}, {}
+    # HMDB51 is full-body movie footage, so its cropped copies are the only out-of-distribution check on
+    # the waist-up regime.
+    for regime in CROP_LEVELS:
+        part = [triple for triple in hmdb if triple[0].get("crop") == regime]
+        if not part:
+            continue
+        title = f"HMDB51 {regime} (movies, incl. situps as none)"
+        result["external"][title] = evaluate(result["model"], part, result["floors"])
+        result["external_confusion"][title] = evaluate_confusion(result["model"], part, result["floors"])
+    if recorded:
+        title = "Our own recordings (waves only, natively waist-up)"
+        result["external"][title] = evaluate(result["model"], recorded, result["floors"])
+        result["external_confusion"][title] = evaluate_confusion(result["model"], recorded, result["floors"])
 
-        result["external"], result["external_confusion"] = {}, {}
-        # Per crop regime, like the training report: HMDB51 is full-body movie footage, so its cropped
-        # copies are the only out-of-distribution check we have on the waist-up regime.
-        for regime in CROP_LEVELS:
-            part = [triple for triple in hmdb if triple[0].get("crop") == regime]
-            if not part:
-                continue
-            title = f"HMDB51 {regime} (movies, incl. situps as none)"
-            result["external"][title] = evaluate(result["model"], part, result["floors"])
-            result["external_confusion"][title] = evaluate_confusion(
-                result["model"], part, result["floors"])
-        if recorded:
-            title = "Our own recordings (waves only, natively waist-up)"
-            result["external"][title] = evaluate(result["model"], recorded, result["floors"])
-            result["external_confusion"][title] = evaluate_confusion(
-                result["model"], recorded, result["floors"])
-
-        text = f"===== crop_fraction = {fraction} =====\n" + format_report(result)
-        print()
-        print(text, flush=True)
-        texts.append(text)
-        rows.append({
-            "crop_fraction": fraction, "per_regime": result["per_regime"],
-            "recorded_wave_f1": result["external"].get(
-                "Our own recordings (waves only, natively waist-up)", {}).get(
-                    "wave", {}).get("f1", float("nan")),
-            "waist_squat_recall": result["per_regime"].get("waist", {}).get(
-                "report", {}).get("squat", {}).get("recall", float("nan")),
-        })
-
-        # One model per setting, so the chosen one needs no retraining. `--out` gets the shipped one.
-        suffixed = out.with_name(f"{out.stem}_crop{fraction:g}{out.suffix}")
-        for path in {suffixed, out} if fraction == ship else {suffixed}:
-            save_classifier(result["model"], path, feature_names=ACTION_FEATURE_NAMES,
-                            window_s=ACTION_WINDOW_S)
-            export_multiclass_forest(
-                result["model"], path.with_suffix(".npz"), feature_names=ACTION_FEATURE_NAMES,
-                window_s=ACTION_WINDOW_S, thresholds=result["floors"], classes=result["classes"],
-            )
-
-    curve = format_sweep(rows, rows[0]["per_regime"]["full"]["report"].keys()) if rows else ""
     print()
-    print(curve)
-    if args.report:
-        Path(args.report).write_text("\n\n".join(texts) + "\n\n" + curve + "\n")
+    print(format_report(result), flush=True)
 
-    print(f"\nShipped crop_fraction={ship} to {out} and {out.with_suffix('.npz')}")
+    path = export_forest(
+        result["model"], args.out, feature_names=ACTION_FEATURE_NAMES, window_s=ACTION_WINDOW_S,
+        thresholds=result["floors"], classes=result["classes"],
+    )
+    print(f"\nSaved numpy forest to {path}")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,7 @@
-"""Random forest exported to plain numpy arrays: no scikit-learn needed to run it.
+"""Random forest exported to plain numpy arrays, so the robot runs it without scikit-learn.
 
-Why: on the robot (Raspberry Pi CM4) `RandomForestClassifier.predict_proba` costs ~33 ms for a single sample -
-almost all of it scikit-learn's per-call validation and joblib dispatch, against ~3 ms of actual tree work.
-Walking the exported trees in numpy costs a fraction of that, and the robot venv does not need scikit-learn
-(which also removes the version coupling of the joblib pickle).
+On the Raspberry Pi CM4 `predict_proba` costs ~33 ms per sample (mostly validation overhead); walking
+the exported trees costs a fraction of that and removes the pickle's version coupling.
 """
 
 from dataclasses import dataclass, field
@@ -20,21 +18,29 @@ LEAF = -1
 
 @dataclass
 class NumpyForest:
-    """Decision trees as flat arrays; `class_proba[t][node]` holds one probability per class.
+    """Decision trees as flat arrays.
 
-    Binary wave exports (a single class-1 probability per node) are widened to two columns at load time,
-    so a model exported before the multiclass support keeps working untouched.
+    Attributes:
+        children_left: Per tree, left child index per node (LEAF for leaves).
+        children_right: Per tree, right child index per node.
+        feature: Per tree, feature index compared at each node.
+        split_threshold: Per tree, value each node compares its feature against.
+        class_proba: Per tree, (nodes, n_classes) class probabilities.
+        feature_names: Names the sample vector must follow.
+        classes: Class labels, in column order.
+        threshold: Binary decision threshold (wave model).
+        thresholds: Per-class confidence floor (multiclass model).
     """
 
     children_left: list
     children_right: list
     feature: list
-    split_threshold: list   # the value each internal node compares its feature against
-    class_proba: list       # per tree: (nodes, n_classes)
+    split_threshold: list
+    class_proba: list
     feature_names: list
     classes: list = field(default_factory=lambda: [0, 1])
-    threshold: float = 0.5  # binary decision threshold tuned at training time
-    thresholds: dict = field(default_factory=dict)  # multiclass: per-class confidence floor
+    threshold: float = 0.5
+    thresholds: dict = field(default_factory=dict)
 
     def _leaf_probabilities(self, sample):
         sample = np.asarray(sample, dtype=np.float64).ravel()
@@ -51,7 +57,7 @@ class NumpyForest:
         return total / len(self.children_left)
 
     def probabilities(self, sample) -> dict:
-        """Mean per-class probability over the trees (same as sklearn's predict_proba)."""
+        """Mean per-class probability over the trees (same as sklearn's `predict_proba`)."""
         return dict(zip(self.classes, self._leaf_probabilities(sample).tolist()))
 
     def wave_probability(self, sample) -> float:
@@ -59,10 +65,13 @@ class NumpyForest:
         return float(self._leaf_probabilities(sample)[self.classes.index(1)])
 
     def predict_from(self, probabilities: dict):
-        """Same as `predict`, but from an already-computed probability dict.
+        """Argmax of an already-computed probability dict, unless it fails its class floor.
 
-        Walking 300 trees costs ~0.8 ms, so a caller that also wants the probabilities (the live action
-        detector does, for its panel) would otherwise pay for the walk twice on every frame.
+        Args:
+            probabilities: Output of `probabilities()`.
+
+        Returns:
+            (class name, probability), or (NONE, 0.0) below the floor.
         """
         name = max(probabilities, key=probabilities.get)
         probability = probabilities[name]
@@ -71,60 +80,65 @@ class NumpyForest:
         return name, float(probability)
 
     def predict(self, sample):
-        """(class name, probability): the argmax, unless it fails its own confidence floor."""
+        """(class name, probability) for one sample; see `predict_from`."""
         return self.predict_from(self.probabilities(sample))
 
 
-def export_forest(model, path, feature_names=None, window_s=WINDOW_S, threshold=0.5):
-    """Save a fitted RandomForestClassifier as the arrays NumpyForest needs."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    wave_column = list(model.classes_).index(1)
-    arrays = {"n_trees": len(model.estimators_), "window_s": window_s, "threshold": float(threshold),
-              "feature_names": np.array(list(feature_names if feature_names is not None else FEATURE_NAMES))}
-    for index, estimator in enumerate(model.estimators_):
-        tree = estimator.tree_
-        counts = tree.value[:, 0, :]  # (nodes, classes): class proportions per node in recent sklearn
-        arrays[f"left_{index}"] = tree.children_left.astype(np.int32)
-        arrays[f"right_{index}"] = tree.children_right.astype(np.int32)
-        arrays[f"feature_{index}"] = tree.feature.astype(np.int32)
-        arrays[f"threshold_{index}"] = tree.threshold.astype(np.float64)
-        arrays[f"proba_{index}"] = (counts[:, wave_column] / counts.sum(axis=1)).astype(np.float64)
-    np.savez_compressed(path, **arrays)
-    return path
+def export_forest(model, path, feature_names=FEATURE_NAMES, window_s=WINDOW_S, threshold=0.5,
+                  classes=None, thresholds=None):
+    """Save a fitted RandomForestClassifier as the arrays `NumpyForest` needs.
 
+    Args:
+        model: Fitted `RandomForestClassifier`.
+        path: Output `.npz`.
+        feature_names: Feature order the model was trained on.
+        window_s: Window length the features were computed over.
+        threshold: Binary decision threshold (ignored when `classes` is given).
+        classes: Multiclass label order to store; None exports the binary wave format.
+        thresholds: Per-class confidence floors, required with `classes`.
 
-def export_multiclass_forest(model, path, feature_names, window_s, thresholds, classes):
-    """Save a fitted multiclass RandomForestClassifier as the arrays NumpyForest needs.
-
-    `classes` is the label order to store; the model's own classes_ may be sorted differently, so each
-    tree's columns are reordered to match it.
+    Returns:
+        The output path.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    classes = list(classes)
-    order = [list(model.classes_).index(name) for name in classes]
-    arrays = {
-        "n_trees": len(model.estimators_), "window_s": float(window_s),
-        "feature_names": np.array(list(feature_names)),
-        "classes": np.array(classes),
-        "thresholds": np.array([float(thresholds[name]) for name in classes], np.float64),
-    }
+    arrays = {"n_trees": len(model.estimators_), "window_s": float(window_s),
+              "feature_names": np.array(list(feature_names))}
+    if classes is None:
+        columns = [list(model.classes_).index(1)]
+        arrays["threshold"] = float(threshold)
+    else:
+        classes = list(classes)
+        columns = [list(model.classes_).index(name) for name in classes]
+        arrays["classes"] = np.array(classes)
+        arrays["thresholds"] = np.array([float(thresholds[name]) for name in classes], np.float64)
     for index, estimator in enumerate(model.estimators_):
         tree = estimator.tree_
-        counts = tree.value[:, 0, :]  # (nodes, classes): class proportions per node in recent sklearn
-        proba = counts[:, order] / np.maximum(counts.sum(axis=1, keepdims=True), 1e-12)
+        counts = tree.value[:, 0, :]
+        proba = counts[:, columns] / np.maximum(counts.sum(axis=1, keepdims=True), 1e-12)
         arrays[f"left_{index}"] = tree.children_left.astype(np.int32)
         arrays[f"right_{index}"] = tree.children_right.astype(np.int32)
         arrays[f"feature_{index}"] = tree.feature.astype(np.int32)
         arrays[f"threshold_{index}"] = tree.threshold.astype(np.float64)
-        arrays[f"proba_{index}"] = proba.astype(np.float64)
+        arrays[f"proba_{index}"] = (proba[:, 0] if classes is None else proba).astype(np.float64)
     np.savez_compressed(path, **arrays)
     return path
 
 
 def load_forest(path, feature_names=FEATURE_NAMES, window_s=WINDOW_S) -> NumpyForest:
-    """Load an exported forest, checking it was trained on the features the caller expects."""
+    """Load an exported forest.
+
+    Args:
+        path: The `.npz` written by `export_forest`.
+        feature_names: Feature order the caller will feed it.
+        window_s: Window length the caller uses.
+
+    Returns:
+        The forest.
+
+    Raises:
+        ValueError: The file was exported with other features or another window length.
+    """
     data = np.load(path, allow_pickle=False)
     stored_names = [str(name) for name in data["feature_names"]]
     if tuple(stored_names) != tuple(feature_names) or float(data["window_s"]) != float(window_s):
@@ -139,7 +153,7 @@ def load_forest(path, feature_names=FEATURE_NAMES, window_s=WINDOW_S) -> NumpyFo
         classes = [str(name) for name in data["classes"]]
         thresholds = dict(zip(classes, data["thresholds"].tolist()))
     else:
-        # A binary wave export: one column of class-1 probability per node. Widen it to [P(0), P(1)].
+        # Binary export: one column of class-1 probability, widened to [P(0), P(1)].
         classes, thresholds = [0, 1], {}
         probabilities = [np.column_stack([1.0 - p.ravel(), p.ravel()]) for p in probabilities]
     return NumpyForest(

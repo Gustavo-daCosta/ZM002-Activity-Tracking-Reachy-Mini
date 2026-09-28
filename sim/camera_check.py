@@ -12,6 +12,7 @@ from core.vision import add_camera_argument, list_cameras, open_camera
 
 
 def main():
+    """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_camera_argument(parser)
     parser.add_argument("--list", action="store_true", help="print cameras (index and name) and exit")

@@ -27,7 +27,7 @@ from robot.connect import API_PORT, MDNS_HOST, resolve_host  # noqa: E402
 
 VALID_NEEDS = ("motion", "media", "tracking")
 
-# Sleep pose observed on the robot: z ≈ -0.046 m, pitch ≈ 0.48 rad, antennas ≈ 2.6-3.0 rad
+# Sleep pose on the robot: z ~ -0.046 m, pitch ~ 0.48 rad, antennas ~ 2.6-3.0 rad.
 SLEEP_Z_M = -0.02
 SLEEP_PITCH_RAD = 0.3
 SLEEP_ANTENNA_RAD = 1.5
@@ -55,6 +55,7 @@ class Api:
         self.timeout = timeout
 
     def _request(self, method: str, path: str, body=None, timeout: float | None = None):
+        """Send one JSON request; raises `ApiError` on network or HTTP failure."""
         data = None if body is None else json.dumps(body).encode()
         request = urllib.request.Request(
             self.base + path, data=data, method=method, headers={"Content-Type": "application/json"}
@@ -67,9 +68,11 @@ class Api:
         return json.loads(raw) if raw else None
 
     def get(self, path: str, timeout: float | None = None):
+        """GET `path` and decode the JSON body (None when empty)."""
         return self._request("GET", path, timeout=timeout)
 
     def post(self, path: str, body=None, timeout: float | None = None):
+        """POST `body` as JSON to `path` and decode the response."""
         return self._request("POST", path, body, timeout)
 
 
@@ -84,6 +87,14 @@ def is_asleep(head_pose: dict, antennas: list) -> bool:
 
 @dataclass
 class Check:
+    """One preflight step.
+
+    Attributes:
+        name: Step name.
+        status: ok | fixed | warn | failed.
+        detail: Human-readable detail.
+    """
+
     name: str
     status: str  # ok | fixed | warn | failed
     detail: str = ""
@@ -91,6 +102,15 @@ class Check:
 
 @dataclass
 class PreflightResult:
+    """Outcome of `run_preflight`.
+
+    Attributes:
+        host: The host that answered.
+        reachable: Whether the daemon answered at all.
+        checks: The steps run, in order.
+        fixes_applied: Names of the fixes applied.
+    """
+
     host: str
     reachable: bool = False
     checks: list[Check] = field(default_factory=list)
@@ -98,18 +118,22 @@ class PreflightResult:
 
     @property
     def ready(self) -> bool:
+        """Reachable and no failed check."""
         return self.reachable and not any(c.status == "failed" for c in self.checks)
 
     @property
     def exit_code(self) -> int:
+        """0 ready, 1 not ready, 2 unreachable."""
         if not self.reachable:
             return 2
         return 0 if self.ready else 1
 
     def add(self, name: str, status: str, detail: str = "") -> None:
+        """Append a check."""
         self.checks.append(Check(name, status, detail))
 
     def to_dict(self) -> dict:
+        """JSON-serializable form, with one entry per check name."""
         data = asdict(self)
         data.update({c.name: {"status": c.status, "detail": c.detail} for c in self.checks})
         data["ready"] = self.ready
@@ -117,6 +141,7 @@ class PreflightResult:
         return data
 
     def render(self) -> str:
+        """Human-readable report."""
         lines = [f"Reachy Mini preflight @ {self.host}"]
         lines += [f"  {ICONS[c.status]} {c.name:<9} {c.detail}" for c in self.checks]
         verdict = {0: "READY", 1: "NOT READY", 2: "UNREACHABLE"}[self.exit_code]
@@ -126,6 +151,8 @@ class PreflightResult:
 
 @dataclass
 class _Ctx:
+    """State shared by the check steps."""
+
     api: Api
     status: dict
     result: PreflightResult
@@ -136,10 +163,12 @@ class _Ctx:
 
 
 def _ask(question: str) -> bool:
+    """Yes/no prompt on stdin (accepts y/yes/s/sim)."""
     return input(f"{question} [y/N] ").strip().lower() in ("y", "yes", "s", "sim")
 
 
 def _connect(host: str, api_factory) -> tuple:
+    """(api, daemon status) for the first of `host` / mDNS that answers, or (None, None)."""
     candidates = [host] if host == MDNS_HOST else [host, MDNS_HOST]
     for candidate in candidates:
         api = api_factory(candidate)
@@ -151,6 +180,7 @@ def _connect(host: str, api_factory) -> tuple:
 
 
 def _wait_moves(ctx: _Ctx, timeout: float) -> bool:
+    """Poll until no move is running; False on timeout."""
     for _ in range(int(timeout / 0.5) + 1):
         if not ctx.api.get("/api/move/running"):
             return True
@@ -159,6 +189,7 @@ def _wait_moves(ctx: _Ctx, timeout: float) -> bool:
 
 
 def _check_daemon(ctx: _Ctx) -> bool:
+    """Check the daemon; True to continue with the next step."""
     state = ctx.status.get("state")
     if state == "running":
         ctx.result.add("daemon", "ok", f"running, version {ctx.status.get('version')}")
@@ -179,6 +210,7 @@ def _check_daemon(ctx: _Ctx) -> bool:
 
 
 def _check_backend(ctx: _Ctx) -> bool:
+    """Check the backend; True to continue with the next step."""
     backend = ctx.status.get("backend_status") or {}
     error = backend.get("error") or ctx.status.get("error")
     if backend.get("ready") and not error:
@@ -192,6 +224,7 @@ def _check_backend(ctx: _Ctx) -> bool:
 
 
 def _check_app(ctx: _Ctx) -> bool:
+    """Check the app; True to continue with the next step."""
     app = ctx.api.get("/api/apps/current-app-status")
     lock = ctx.api.get("/api/daemon/robot-app-lock-status") or {}
     if app is None and lock.get("state") in (None, "free"):
@@ -206,6 +239,7 @@ def _check_app(ctx: _Ctx) -> bool:
 
 
 def _check_moves(ctx: _Ctx) -> bool:
+    """Check the moves; True to continue with the next step."""
     if _wait_moves(ctx, 5.0):
         ctx.result.add("moves", "ok", "no move running")
     else:
@@ -214,6 +248,7 @@ def _check_moves(ctx: _Ctx) -> bool:
 
 
 def _check_motors(ctx: _Ctx) -> bool:
+    """Check the motors; True to continue with the next step."""
     mode = (ctx.api.get("/api/motors/status") or {}).get("mode")
     if mode == "enabled":
         ctx.result.add("motors", "ok", "enabled")
@@ -236,6 +271,7 @@ WAKE_UP_TIMEOUT = 5.0
 
 
 def _pose_detail(state: dict) -> str:
+    """Head z, pitch and antennas as one line."""
     pose = state.get("head_pose") or {}
     return (
         f"head z={pose.get('z', 0):+.3f} m pitch={pose.get('pitch', 0):+.2f} rad "
@@ -244,6 +280,7 @@ def _pose_detail(state: dict) -> str:
 
 
 def _check_awake(ctx: _Ctx) -> bool:
+    """Check the awake; True to continue with the next step."""
     state = ctx.api.get("/api/state/full") or {}
     if not is_asleep(state.get("head_pose") or {}, state.get("antennas_position") or []):
         ctx.result.add("awake", "ok", _pose_detail(state))
@@ -255,8 +292,7 @@ def _check_awake(ctx: _Ctx) -> bool:
     ctx.result.fixes_applied.append("wake_up")
     ctx.sleep(1.0)
     _wait_moves(ctx, 10.0)
-    # wake_up interpolates for ~2 s and "no move running" can be reported before the pose has settled,
-    # so the pose is polled instead of read once (this used to abort scripts with a still-asleep robot).
+    # wake_up reports "no move running" before the pose has settled, so poll it.
     state = _wait_awake(ctx, WAKE_UP_TIMEOUT)
     if not is_asleep(state.get("head_pose") or {}, state.get("antennas_position") or []):
         ctx.result.add("awake", "fixed", f"woke up ({_pose_detail(state)})")
@@ -278,6 +314,7 @@ def _wait_awake(ctx: _Ctx, timeout: float) -> dict:
 
 
 def _check_media(ctx: _Ctx) -> bool:
+    """Check the media; True to continue with the next step."""
     media = ctx.api.get("/api/media/status") or {}
     if media.get("no_media"):
         ctx.result.add(
@@ -306,11 +343,13 @@ def _check_media(ctx: _Ctx) -> bool:
 
 
 def _face_ts(ctx: _Ctx):
+    """The tracker's latest face timestamp, or None."""
     body = ctx.api.get("/api/media/tracking/face") or {}
     return (body.get("face_target") or {}).get("ts")
 
 
 def _ts_advances(ctx: _Ctx, polls: int = 6) -> bool:
+    """Whether the face timestamp changes within `polls` half-second polls."""
     first = _face_ts(ctx)
     for _ in range(polls):
         ctx.sleep(0.5)
@@ -321,10 +360,11 @@ def _ts_advances(ctx: _Ctx, polls: int = 6) -> bool:
 
 
 def _check_tracking(ctx: _Ctx) -> bool:
+    """Check the tracking; True to continue with the next step."""
     if _ts_advances(ctx):
         ctx.result.add("tracking", "ok", "tracker already receiving frames")
         return True
-    # Tracking was not active: enable it just for the test, then restore (disable).
+    # Enable tracking just for the test, then disable it again.
     ctx.api.post("/api/media/tracking/enable", {"weight": 1.0})
     try:
         if _ts_advances(ctx):
@@ -357,7 +397,23 @@ def run_preflight(
     sleep: Callable[[float], None] = time.sleep,
     confirm: Callable[[str], bool] | None = None,
 ) -> PreflightResult:
-    """Run the ordered checks; stop at the first failing one."""
+    """Run the ordered checks, stopping at the first failure.
+
+    Args:
+        host: Robot host (default: `resolve_host()`).
+        fix: Apply safe fixes (motors, wake up, media).
+        needs: Requirements among "motion", "media", "tracking".
+        interactive: Allow asking the user (daemon start).
+        api_factory: `host -> Api`, injectable for tests.
+        sleep: Sleep function, injectable for tests.
+        confirm: Yes/no prompt, injectable for tests.
+
+    Returns:
+        The `PreflightResult`.
+
+    Raises:
+        ValueError: Unknown need.
+    """
     needs = set(needs)
     unknown = needs - set(VALID_NEEDS)
     if unknown:
@@ -397,6 +453,7 @@ def run_preflight(
 
 
 def main(argv=None) -> int:
+    """CLI entry point; returns the exit code."""
     parser = argparse.ArgumentParser(description="Verify (and fix) Reachy Mini state before acting.")
     parser.add_argument("--host", help="robot host (default: REACHY_HOST or ROBOT_IP)")
     parser.add_argument("--fix", action="store_true", help="auto-fix safe problems (motors, wake up, media)")

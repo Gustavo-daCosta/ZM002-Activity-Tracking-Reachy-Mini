@@ -5,8 +5,8 @@ See [simulation.md](simulation.md) to run them on the webcam and [robot.md](robo
 
 ## Body tracking and model comparison
 
-Same idea as `head_tracking.py`, but the robot follows the **center of the torso** and the pose model is
-selectable, so models can be compared under identical conditions (same loop, target rule and controller).
+The robot follows the **center of the torso** and the pose model is selectable, so models can be compared
+under identical conditions (same loop, target rule and controller).
 
 ```bash
 sim/start.sh                                                         # terminal 1
@@ -15,7 +15,7 @@ reachy_mini_env/bin/python -m sim.body_tracking --model blazepose-full
 reachy_mini_env/bin/python -m sim.body_tracking --model vitpose-s
 ```
 
-All `head_tracking` options (`--camera`, `--max-yaw`, `--smoothing`, ...) are available, plus `--min-score`.
+Options: `--camera`, `--max-yaw`, `--max-pitch`, `--deadzone`, `--smoothing`, `--rate`, `--min-score`.
 
 | Model | Type | What runs | Keypoints |
 |---|---|---|---|

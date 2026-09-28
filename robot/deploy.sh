@@ -44,20 +44,13 @@ ssh "$HOST" 'cat ~/VERSION.txt; python3 -V; df -h / | tail -1; free -h | head -2
 
 step "2. Sync code and models to $REMOTE"
 ssh "$HOST" "mkdir -p $REMOTE/core/models"
-# COPYFILE_DISABLE: keep macOS from adding AppleDouble "._*" files to the archive.
-# The payload is whole directories, not a file list: `core/` is what both environments share and `robot/`
-# is what only runs here, so the robot gets exactly those two. `training/` is excluded by construction --
-# it needs scikit-learn, which this venv deliberately does not have. An earlier version listed twelve
-# individual paths and carried a comment warning that narrowing one could silently drop the action
-# recognizer; directories cannot drop a new module.
-# Models are synced separately below, so they are excluded here.
+# Whole directories, so a new module cannot be left behind; training/ needs scikit-learn and stays out.
+# COPYFILE_DISABLE keeps macOS from adding "._*" files. Models are synced separately below.
 COPYFILE_DISABLE=1 tar czf - -C "$REPO" \
   --exclude '__pycache__' --exclude '*.pyc' --exclude 'core/models' --exclude 'robot/wheels' \
   core robot requirements/robot.txt \
   | ssh "$HOST" "tar xzf - -C $REMOTE"
-# Only the models the robot needs (int8 MoveNet 2.9 MB + the numpy forests; the fp32 MoveNet, vitpose-s and
-# BlazePose stay on the Mac). Only the .npz exports go: the robot has no scikit-learn and cannot unpickle a
-# .joblib.
+# Only the models the robot needs: int8 MoveNet and the numpy forests (the other pose models stay on the Mac).
 COPYFILE_DISABLE=1 tar czf - -C "$REPO/core/models" movenet-lightning-int8.tflite wave_classifier.npz wave_classifier_ntu.npz action_classifier.npz \
   | ssh "$HOST" "tar xzf - -C $REMOTE/core/models"
 ssh "$HOST" "ls -la $REMOTE $REMOTE/core/models | head -30"

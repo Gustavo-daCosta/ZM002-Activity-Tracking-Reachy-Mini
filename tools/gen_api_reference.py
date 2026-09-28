@@ -71,6 +71,7 @@ DANGEROUS = {
 
 
 def group_of(path: str) -> str:
+    """The `GROUPS` heading an endpoint path belongs to."""
     for name, prefixes in GROUPS.items():
         if name.startswith("Web pages"):
             continue
@@ -80,6 +81,7 @@ def group_of(path: str) -> str:
 
 
 def type_str(schema: dict) -> str:
+    """A short Markdown rendering of an OpenAPI schema type."""
     if not schema:
         return "any"
     if "$ref" in schema:
@@ -98,10 +100,12 @@ def type_str(schema: dict) -> str:
 
 
 def one_line(text: str | None) -> str:
+    """Collapse whitespace into one line."""
     return " ".join((text or "").split())
 
 
 def render_params(op: dict) -> list[str]:
+    """Markdown table of an operation's parameters (empty when it has none)."""
     params = op.get("parameters") or []
     if not params:
         return []
@@ -117,6 +121,7 @@ def render_params(op: dict) -> list[str]:
 
 
 def render_body(op: dict) -> list[str]:
+    """Markdown line describing the request body (empty when it has none)."""
     body = op.get("requestBody")
     if not body:
         return []
@@ -127,6 +132,7 @@ def render_body(op: dict) -> list[str]:
 
 
 def render_response(op: dict) -> list[str]:
+    """Markdown line describing the 200 response (empty when untyped)."""
     ok = (op.get("responses") or {}).get("200") or {}
     content = ok.get("content") or {}
     if not content:
@@ -136,6 +142,7 @@ def render_response(op: dict) -> list[str]:
 
 
 def render_schema(name: str, schema: dict) -> list[str]:
+    """Markdown section for one component schema."""
     lines = [f"### `{name}`", ""]
     if schema.get("description"):
         lines += [one_line(schema["description"]), ""]
@@ -157,6 +164,7 @@ def render_schema(name: str, schema: dict) -> list[str]:
 
 
 def capture_examples(host: str) -> dict[str, str]:
+    """Live responses of `SAFE_EXAMPLE_GETS`, as pretty JSON (truncated at 1500 chars)."""
     api = Api(host, timeout=8.0)
     examples = {}
     for path in SAFE_EXAMPLE_GETS:
@@ -171,6 +179,7 @@ def capture_examples(host: str) -> dict[str, str]:
 
 
 def main(argv=None) -> int:
+    """Generate the reference; returns the exit code."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--host", default=None)
     parser.add_argument("--no-examples", action="store_true")

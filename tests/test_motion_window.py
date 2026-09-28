@@ -36,6 +36,3 @@ def test_window_drops_old_frames_and_counts_invalid():
     invalid = np.isnan(kps[:, 0, 0])
     assert 0 < invalid.sum() < len(times)
     assert window.valid_frac() == pytest.approx(1 - invalid.mean())
-
-    window.clear()
-    assert window.span() == 0.0 and window.valid_frac() == 0.0

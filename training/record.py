@@ -2,8 +2,8 @@
 
     reachy_mini_env/bin/python -m training.record [--rounds 10] [--round-seconds 4]
 
-Follow the text on screen: WAVE rounds and NOT WAVE rounds (try the suggested non-wave movements),
-separated by short countdowns. q / ESC stops early and still saves.
+Follow the text on screen: WAVE rounds and NOT WAVE rounds, separated by short countdowns. q / ESC
+stops early and still saves.
 """
 
 import argparse
@@ -14,9 +14,9 @@ import cv2
 import numpy as np
 
 from core.motion import OTHER, PAUSE, WAVE
-from training.dataset import DATA_DIR, save_session
 from core.pose_backends import BACKENDS, create_backend
 from core.vision import add_camera_argument, draw_coco_skeleton, open_camera, put_text
+from training.dataset import DATA_DIR, save_session
 
 OTHER_HINTS = (
     "stand still",
@@ -31,6 +31,16 @@ COLORS = {WAVE: (0, 200, 0), OTHER: (0, 140, 255), PAUSE: (160, 160, 160)}
 
 @dataclass
 class Phase:
+    """One segment of the recording schedule.
+
+    Attributes:
+        start: Start time in seconds.
+        end: End time in seconds.
+        label: WAVE, OTHER or PAUSE.
+        round_id: Round index, -1 during pauses.
+        text: Instruction shown on screen.
+    """
+
     start: float
     end: float
     label: int
@@ -39,7 +49,7 @@ class Phase:
 
 
 def build_schedule(rounds, round_s, pause_s, prep_s=3.0):
-    """Preparation, then 2 * rounds rounds alternating WAVE / NOT WAVE with a countdown pause between them."""
+    """Preparation, then 2 * rounds rounds alternating WAVE / NOT WAVE with a countdown between them."""
     schedule = [Phase(0.0, prep_s, PAUSE, -1, "Get ready: WAVE")]
     clock = prep_s
     for k in range(2 * rounds):
@@ -55,10 +65,12 @@ def build_schedule(rounds, round_s, pause_s, prep_s=3.0):
 
 
 def phase_at(schedule, elapsed):
+    """The phase active at `elapsed` seconds, or None after the schedule ends."""
     return next((phase for phase in schedule if phase.start <= elapsed < phase.end), None)
 
 
 def main():
+    """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--rounds", type=int, default=10, help="rounds per class (default 10)")
     parser.add_argument("--round-seconds", type=float, default=4.0)
@@ -105,7 +117,6 @@ def main():
             if result.keypoints is None:
                 put_text(frame, "NO PERSON", 5, (0, 0, 255))
             elif (result.keypoints[[9, 10], 2] < backend.default_min_score).all():
-                # Without a visible wrist the window is discarded in training.
                 put_text(frame, "HANDS NOT VISIBLE - step back / raise hands into view", 5, (0, 0, 255))
             else:
                 put_text(frame, "person and hand visible", 5, (0, 255, 0))

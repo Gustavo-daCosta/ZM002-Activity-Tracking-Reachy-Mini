@@ -16,6 +16,7 @@ clicks: list[tuple[int, int]] = []
 
 
 def on_mouse(event: int, x: int, y: int, flags: int, param: object) -> None:
+    """OpenCV mouse callback: queue left clicks."""
     if event == cv2.EVENT_LBUTTONDOWN:
         clicks.append((x, y))
 

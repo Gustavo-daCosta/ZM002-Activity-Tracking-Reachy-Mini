@@ -1,32 +1,29 @@
-"""Train the wave classifier on public skeleton datasets, then check it where it has to work: the robot.
+"""Train the wave classifier on public skeleton datasets, then check it on the robot recordings.
 
     reachy_mini_env/bin/python -m training.train_public --ntu <ntu60_hrnet.pkl> \
-        [--hmdb <hmdb51_2d.pkl>] [--max-clips-per-class 150] [--out core/models/wave_classifier_ntu.joblib]
+        [--hmdb <hmdb51_2d.pkl>] [--max-clips-per-class 150] [--out core/models/wave_classifier_ntu.npz]
 
-Our own recordings are one person, one camera, one room. NTU RGB+D 60 gives ~950 waving clips from 40
-subjects seen by 3 cameras, plus 59 other actions as labelled negatives. Evaluation is grouped by subject,
-so the reported numbers are for people the model never saw; HMDB51 (movies) and the robot recordings are
-kept as external test sets, never trained on.
+Evaluation is grouped by subject, so the numbers are for people the model never saw; HMDB51 and our
+recordings are external test sets, never trained on.
 """
 
 import argparse
-from pathlib import Path
 
 import numpy as np
 
-from training.dataset import DATA_DIR, list_sessions, load_session, make_windows
-from core.motion.detectors import RuleWaveDetector, save_classifier
+from core.motion.detectors import DEFAULT_MODEL_PATH, RuleWaveDetector
 from core.motion.features import FEATURE_NAMES, features_vector
 from core.motion.forest import export_forest
+from training.dataset import DATA_DIR, list_sessions, load_session, make_windows
 from training.public_data import HMDB_WAVE_LABEL, NTU_WAVE_LABEL, dataset_windows
 from training.train import classification_metrics, make_model
 
-# Models live in core/, not next to the trainer: core/ is what ships to the robot.
-DEFAULT_OUT = Path(__file__).resolve().parents[1] / "core" / "models" / "wave_classifier_ntu.joblib"
+DEFAULT_OUT = DEFAULT_MODEL_PATH
 THRESHOLDS = [round(0.05 * i, 2) for i in range(1, 19)]
 
 
 def to_arrays(windows):
+    """(X, y, groups) from (features, label, group) triples."""
     X = np.array([features_vector(f) for f, _, _ in windows], np.float32).reshape(-1, len(FEATURE_NAMES))
     y = np.array([label for _, label, _ in windows], int)
     groups = np.array([group for _, _, group in windows])
@@ -34,7 +31,11 @@ def to_arrays(windows):
 
 
 def train_grouped(windows, n_splits=5):
-    """Cross-validate by subject (never splitting one person between train and test), then fit on everything."""
+    """Cross-validate by subject, tune the threshold on held-out probabilities, then fit on everything.
+
+    Raises:
+        ValueError: No windows, or only one class.
+    """
     from sklearn.model_selection import GroupKFold, cross_val_predict
 
     X, y, groups = to_arrays(windows)
@@ -45,8 +46,6 @@ def train_grouped(windows, n_splits=5):
 
     unique = np.unique(groups)
     cv = GroupKFold(n_splits=min(n_splits, len(unique)))
-    # Probabilities, not labels: the decision threshold is chosen on these held-out predictions, never on
-    # data the model was fitted on, and then travels with the saved model.
     probabilities = cross_val_predict(make_model(), X, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
     curve = [(t, classification_metrics(y, (probabilities >= t).astype(int))) for t in THRESHOLDS]
     threshold, metrics = max(curve, key=lambda item: item[1]["f1"])
@@ -69,7 +68,7 @@ def train_grouped(windows, n_splits=5):
 
 
 def evaluate_windows(model, windows, threshold=0.5):
-    """Metrics of a fitted model on a set it was never trained on, at the tuned threshold."""
+    """Metrics of a fitted model on windows it was never trained on, at `threshold`."""
     X, y, _ = to_arrays(windows)
     predictions = (model.predict_proba(X)[:, list(model.classes_).index(1)] >= threshold).astype(int)
     metrics = classification_metrics(y, predictions)
@@ -79,7 +78,7 @@ def evaluate_windows(model, windows, threshold=0.5):
 
 
 def session_windows(data_dir=DATA_DIR):
-    """Our robot-viewpoint recordings, in the same (features, label, group) shape."""
+    """Our robot-viewpoint recordings as (features, label, group) triples."""
     windows = []
     for index, path in enumerate(list_sessions(data_dir)):
         for features, label, _ in make_windows(load_session(path)):
@@ -88,11 +87,13 @@ def session_windows(data_dir=DATA_DIR):
 
 
 def format_metrics(name, metrics):
+    """One report row."""
     return (f"{name:<28}{metrics['accuracy']:>9.3f}{metrics['precision']:>10.3f}{metrics['recall']:>8.3f}"
             f"{metrics['f1']:>7.3f}   {metrics['confusion']}")
 
 
 def format_report(result, external):
+    """Render `train_grouped` output plus the external sets as text."""
     lines = [
         f"Windows: {result['windows']} (wave {result['wave_windows']}) from {result['subjects']} subjects, "
         f"{result['folds']}-fold grouped by subject; decision threshold tuned to {result['threshold']:.2f} "
@@ -108,6 +109,7 @@ def format_report(result, external):
 
 
 def main(argv=None):
+    """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ntu", required=True, help="path to ntu60_hrnet.pkl")
     parser.add_argument("--hmdb", help="path to hmdb51_2d.pkl (external test set)")
@@ -134,12 +136,7 @@ def main(argv=None):
 
     print()
     print(format_report(result, external))
-
-    save_classifier(result["model"], args.out, threshold=result["threshold"])
-    forest_path = export_forest(result["model"], Path(args.out).with_suffix(".npz"),
-                                threshold=result["threshold"])
-    print(f"\nSaved classifier to {args.out}")
-    print(f"Saved numpy forest (robot runtime) to {forest_path}")
+    print(f"\nSaved numpy forest to {export_forest(result['model'], args.out, threshold=result['threshold'])}")
 
 
 if __name__ == "__main__":

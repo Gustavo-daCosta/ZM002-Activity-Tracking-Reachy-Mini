@@ -12,7 +12,7 @@ midpoint and shoulder width, with a frame aspect-ratio correction), so they can 
 - **rules** (`motion/detectors.py`): wrist above the shoulder, ≥3 horizontal reversals, ≥0.3 shoulder-widths of
   x amplitude;
 - **classifier** (`motion/train.py`): RandomForest on 9 window features (reversals, reversal rate, amplitudes,
-  speed, height, validity), saved to `models/wave_classifier.joblib`.
+  speed, height, validity), exported to `core/models/wave_classifier.npz`.
 
 ```bash
 reachy_mini_env/bin/python -m training.record          # guided recording (WAVE / NOT WAVE rounds)
@@ -29,7 +29,7 @@ Measured on the 2 recorded sessions (416 windows, 220 wave), evaluated leave-one
 | **classifier trained on NTU** (default) | **0.950** | **0.976** | 0.927 | **0.951** |
 
 The default model is the NTU-trained one (see below): it never saw these recordings and still scores higher on
-them than the model fitted to them. `--classifier core/models/wave_classifier.joblib` selects the
+them than the model fitted to them. `--classifier core/models/wave_classifier.npz` selects the
 self-trained one.
 
 The rules never fire on a non-wave but miss a third of the waves (the median window has exactly 3 reversals, the
@@ -145,11 +145,11 @@ ROSE Lab terms**, and **UCF101 is research-use only**. The pickles are 1.8 GB an
 tools/download_datasets.sh
 reachy_mini_env/bin/python -m training.actions.train --ntu datasets/ntu60_hrnet.pkl \
     --ucf datasets/ucf101_hrnet.pkl --hmdb datasets/hmdb51_2d.pkl \
-    --crop-fraction 0 0.25 0.5 1 --ship 0.25
+    --crop-fraction 0.25
 ```
 
 `--crop-fraction` is how much of the waist-up augmentation reaches the **training** half (0 = full-body
 windows only, 1 = every cropped copy as well); it never touches the evaluation half, so every setting is
-scored on the same windows. `--ship 0.25` is the shipped setting. Without it the waist-up F1 of `wave`, `squat` and
-`clapping` is 0.000.
+scored on the same windows. 0.25 is the shipped setting (chosen over 0, 0.5 and 1 in an earlier sweep).
+At 0 the waist-up F1 of `wave`, `squat` and `clapping` is 0.000.
 

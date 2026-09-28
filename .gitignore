@@ -7,23 +7,13 @@ __pycache__/
 *.jpg
 
 # --- model files -------------------------------------------------------------------------------------
-# core/models/ holds two very different kinds of file, and the rule is what each one costs to replace.
-#
-# Versioned (small, and nothing runs without them): the numpy forest exports. These are what the robot
-# actually executes -- it has no scikit-learn and cannot unpickle a .joblib -- so a fresh clone that
-# lacks them cannot run the wave demo or action recognition at all.
-#   core/models/wave_classifier.npz          126 KB
-#   core/models/wave_classifier_ntu.npz      250 KB
-#   core/models/action_classifier.npz        5.3 MB
-#
-# Ignored (large, and reproducible): pose-estimation weights are downloaded on demand by core/vision.py,
-# and the .joblib bundles are scikit-learn pickles that only exist to retrain from -- they are version
-# coupled to the exact sklearn build and are never deployed.
+# Versioned: the numpy forest exports (wave_classifier*.npz, action_classifier.npz), which the robot runs.
+# Ignored: pose-estimation weights (downloaded on demand by core/vision.py) and leftover local artifacts
+# (sklearn pickles and crop-sweep models from earlier training runs).
 core/models/*.onnx
 core/models/*.tflite
 core/models/*.task
 core/models/*.joblib
-# Training sweep artifacts: one model per crop_fraction setting, kept only to compare runs.
 core/models/action_classifier_crop*.npz
 
 # --- robot deployment --------------------------------------------------------------------------------

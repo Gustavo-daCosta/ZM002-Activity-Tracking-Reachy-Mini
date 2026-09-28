@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATHS = [
     ("core.motion.detectors", "MODELS_DIR"),
     ("core.motion.detectors", "DEFAULT_MODEL_PATH"),
-    ("core.motion.detectors", "DEFAULT_FOREST_PATH"),
+    ("training.train", "DEFAULT_OUT"),
     ("core.motion.actions.detector", "MODELS_DIR"),
     ("core.motion.actions.detector", "DEFAULT_ACTION_MODEL"),
     ("training.dataset", "DATA_DIR"),

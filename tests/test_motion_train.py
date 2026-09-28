@@ -1,7 +1,8 @@
 import pytest
 
 from motion_helpers import synthetic_session
-from core.motion.detectors import ClassifierWaveDetector, save_classifier
+from core.motion.detectors import ClassifierWaveDetector
+from core.motion.forest import export_forest
 from training.train import format_report, train_and_evaluate
 
 # 8 waves per session: with only a few, all waves of a session can share a speed and the forest learns that shortcut.
@@ -21,8 +22,8 @@ def test_training_on_two_sessions_is_grouped_by_session(tmp_path):
     report = format_report(result)
     assert "rules" in report and "classifier" in report and "grouped by session" in report
 
-    save_classifier(result["model"], tmp_path / "wave.joblib")
-    assert ClassifierWaveDetector(tmp_path / "wave.joblib").available
+    export_forest(result["model"], tmp_path / "wave.npz")
+    assert ClassifierWaveDetector(tmp_path / "wave.npz").available
 
 
 def test_single_session_is_grouped_by_round():

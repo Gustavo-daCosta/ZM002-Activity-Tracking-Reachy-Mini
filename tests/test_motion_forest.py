@@ -85,7 +85,7 @@ def test_multiclass_round_trip(tmp_path):
     """A three-class forest survives the numpy export and predicts the same class as sklearn."""
     from sklearn.ensemble import RandomForestClassifier
 
-    from core.motion.forest import export_multiclass_forest, load_forest
+    from core.motion.forest import load_forest
 
     rng = np.random.default_rng(0)
     names = ("none", "wave", "squat")
@@ -99,7 +99,7 @@ def test_multiclass_round_trip(tmp_path):
     model = RandomForestClassifier(n_estimators=8, random_state=0).fit(X, labels)
 
     features = ("f0", "f1", "f2", "f3")
-    path = export_multiclass_forest(
+    path = export_forest(
         model, tmp_path / "actions.npz", feature_names=features, window_s=3.0,
         thresholds={name: 0.4 for name in names}, classes=names,
     )
@@ -118,7 +118,7 @@ def test_multiclass_round_trip(tmp_path):
 def test_predict_falls_back_to_none_below_the_class_floor(tmp_path):
     from sklearn.ensemble import RandomForestClassifier
 
-    from core.motion.forest import export_multiclass_forest, load_forest
+    from core.motion.forest import load_forest
 
     # Overlapping enough (std 1.0, centers 2.2 apart) that an 8-tree forest lands short of
     # unanimous: seed 2 was checked to give the forest ~0.875 confidence on [2.2, 0], not 1.0
@@ -127,7 +127,7 @@ def test_predict_falls_back_to_none_below_the_class_floor(tmp_path):
     X = np.vstack([rng.normal([0, 0], 1.0, (40, 2)), rng.normal([2.2, 0], 1.0, (40, 2))])
     labels = ["none"] * 40 + ["wave"] * 40
     model = RandomForestClassifier(n_estimators=8, random_state=0).fit(X, labels)
-    path = export_multiclass_forest(
+    path = export_forest(
         model, tmp_path / "f.npz", feature_names=("a", "b"), window_s=3.0,
         thresholds={"none": 0.0, "wave": 0.99}, classes=("none", "wave"),
     )
@@ -143,8 +143,6 @@ def test_binary_wave_export_still_loads(tmp_path):
 
     from core.motion.features import FEATURE_NAMES
     from core.motion.forest import export_forest, load_forest
-    from core.motion.window import WINDOW_S
-
     rng = np.random.default_rng(2)
     X = rng.normal(size=(40, len(FEATURE_NAMES)))
     y = (X[:, 0] > 0).astype(int)

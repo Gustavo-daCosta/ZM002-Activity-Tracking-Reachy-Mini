@@ -8,7 +8,15 @@ import numpy as np
 
 
 class StageStats:
+    """Accumulates per-stage milliseconds and frame counts, with a rolling one-second panel."""
+
     def __init__(self, window_s: float = 1.0, clock: Callable[[], float] = time.perf_counter):
+        """Start counting.
+
+        Args:
+            window_s: Length of the rolling panel window.
+            clock: Time source, injectable for tests.
+        """
         self.window_s = window_s
         self._clock = clock
         self._start = clock()
@@ -21,6 +29,12 @@ class StageStats:
         self._panel = {"fps": 0.0, "ms": {}}
 
     def add_frame(self, timings: Dict[str, float], has_target: bool) -> None:
+        """Record one frame.
+
+        Args:
+            timings: Milliseconds per stage; a "total" is added.
+            has_target: Whether a person was found.
+        """
         self.frames += 1
         self.frames_with_target += int(has_target)
         self._window_frames += 1
@@ -42,9 +56,11 @@ class StageStats:
             self._window_frames = 0
 
     def window_summary(self) -> dict:
+        """{"fps", "ms": {stage: mean}} over the last completed window."""
         return self._panel
 
     def final_summary(self) -> dict:
+        """Frames, loop FPS, person percentage and mean/p95 per stage since the start."""
         elapsed = self._clock() - self._start
         return {
             "frames": self.frames,
@@ -58,6 +74,7 @@ class StageStats:
 
 
 def format_summary(model: str, summary: dict) -> str:
+    """Render `final_summary()` as text."""
     lines = [
         f"=== {model} ===",
         f"frames: {summary['frames']}  loop FPS: {summary['fps']:.1f}  person detected: {summary['person_pct']:.0f}%",

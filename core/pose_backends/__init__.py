@@ -1,10 +1,11 @@
 """Interchangeable pose estimation backends returning COCO-17 keypoints.
 
-Heavy libraries (MediaPipe, ONNX Runtime) are imported only when a backend is created.
+Heavy libraries (MediaPipe, ONNX Runtime, LiteRT) are imported only when a backend is created.
 """
 
+import importlib
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Optional, Protocol, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -20,59 +21,42 @@ LEFT_KNEE, RIGHT_KNEE, LEFT_ANKLE, RIGHT_ANKLE = 13, 14, 15, 16
 
 @dataclass
 class PoseResult:
-    """keypoints: (17, 3) float32 with x, y normalized to the frame and a score; None if no person."""
+    """Output of one inference.
+
+    Attributes:
+        keypoints: (17, 3) float32 with x, y normalized to the frame and a score; None if no person.
+        box: Normalized (x0, y0, x1, y1) of the person, when the backend has one.
+        timings: Milliseconds per stage.
+    """
 
     keypoints: Optional[np.ndarray] = None
-    box: Optional[Tuple[float, float, float, float]] = None  # normalized x0, y0, x1, y1
-    timings: Dict[str, float] = field(default_factory=dict)  # stage -> milliseconds
+    box: Optional[Tuple[float, float, float, float]] = None
+    timings: Dict[str, float] = field(default_factory=dict)
 
 
-class PoseBackend(Protocol):
-    name: str
-    default_min_score: float
-
-    def infer(self, frame_bgr: np.ndarray) -> PoseResult: ...
-
-    def close(self) -> None: ...
-
-
-def _blazepose(variant: str) -> Callable[[], PoseBackend]:
-    def factory():
-        from core.pose_backends.blazepose import BlazePoseBackend
-
-        return BlazePoseBackend(variant)
-
-    return factory
-
-
-def _movenet() -> PoseBackend:
-    from core.pose_backends.movenet import MoveNetBackend
-
-    return MoveNetBackend()
-
-
-def _movenet_tflite() -> PoseBackend:
-    from core.pose_backends.movenet_tflite import MoveNetTFLiteBackend
-
-    return MoveNetTFLiteBackend()
-
-
-def _vitpose() -> PoseBackend:
-    from core.pose_backends.vitpose import ViTPoseBackend
-
-    return ViTPoseBackend()
-
-
-BACKENDS: Dict[str, Callable[[], PoseBackend]] = {
-    "blazepose-lite": _blazepose("lite"),
-    "blazepose-full": _blazepose("full"),
-    "movenet-lightning": _movenet,
-    "movenet-tflite": _movenet_tflite,
-    "vitpose-s": _vitpose,
+# name -> (module, class, constructor args)
+BACKENDS = {
+    "blazepose-lite": ("core.pose_backends.blazepose", "BlazePoseBackend", ("lite",)),
+    "blazepose-full": ("core.pose_backends.blazepose", "BlazePoseBackend", ("full",)),
+    "movenet-lightning": ("core.pose_backends.movenet", "MoveNetBackend", ()),
+    "movenet-tflite": ("core.pose_backends.movenet_tflite", "MoveNetTFLiteBackend", ()),
+    "vitpose-s": ("core.pose_backends.vitpose", "ViTPoseBackend", ()),
 }
 
 
-def create_backend(name: str) -> PoseBackend:
+def create_backend(name: str):
+    """Instantiate the backend registered under `name`.
+
+    Args:
+        name: A key of `BACKENDS`.
+
+    Returns:
+        An object with `name`, `default_min_score`, `infer(frame_bgr)` and `close()`.
+
+    Raises:
+        ValueError: Unknown name.
+    """
     if name not in BACKENDS:
         raise ValueError(f"Unknown pose model {name!r}; choose one of: {', '.join(BACKENDS)}")
-    return BACKENDS[name]()
+    module, cls, args = BACKENDS[name]
+    return getattr(importlib.import_module(module), cls)(*args)

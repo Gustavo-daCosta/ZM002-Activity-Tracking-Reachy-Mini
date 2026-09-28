@@ -8,11 +8,14 @@ from core.pose_backends import LEFT_HIP, LEFT_SHOULDER, NOSE, RIGHT_HIP, RIGHT_S
 
 
 def body_center(keypoints: Optional[np.ndarray], min_score: float) -> Optional[Tuple[float, float, str]]:
-    """Return (x, y, source) in normalized image coordinates, or None if nothing usable is confident.
+    """Choose the tracking target from the confident keypoints.
 
-    torso: at least one confident shoulder and one confident hip -> mean of the confident ones.
-    shoulders: hips missing (common when sitting close to a laptop) -> mean of confident shoulders.
-    nose: last resort.
+    Args:
+        keypoints: (17, 3) normalized keypoints, or None.
+        min_score: Confidence threshold.
+
+    Returns:
+        (x, y, source) with source "torso", "shoulders" or "nose", or None if nothing is confident.
     """
     if keypoints is None:
         return None

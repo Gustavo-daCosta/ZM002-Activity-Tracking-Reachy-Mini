@@ -31,7 +31,8 @@ the robot camera. No robot and no preflight needed: the daemon runs on `localhos
 
 > This is position mapping, not closed-loop tracking. In the simulation the camera does not move with the head.
 > On the real robot the camera is in the head, so the same mapping would chase its own motion. There, use the
-> daemon's head tracking or a relative (error-driven) controller instead (see `robot/apps/head_tracking.py`).
+> daemon's head tracking or a relative (error-driven) controller instead (see `robot/apps/head_tracking.py`
+> and `CenteringFollower` in `core/tracking_math.py`).
 
 ## Files
 
@@ -40,9 +41,7 @@ Simulation-only, under `sim/`:
 | File | Purpose |
 |---|---|
 | `sim/start.sh` | Starts the daemon in simulation (`mjpython` on macOS) with the 3D viewer |
-| `sim/head_tracking.py` | Webcam -> MediaPipe -> simulated head |
-| `sim/body_tracking.py` | Body tracking with `--model` selection, a performance panel and `--detect-actions` |
-| `sim/pose_viewer.py` | Pose on the webcam only (no daemon), to check the vision part alone |
+| `sim/body_tracking.py` | Webcam -> pose model -> simulated head, with `--model` selection, a performance panel, `--detect-wave` and `--detect-actions` |
 | `sim/camera_check.py` | Shows a webcam / lists cameras **by name** |
 
 Shared with the robot, under `core/` -- the same code runs in both places:
@@ -89,7 +88,7 @@ Check with `curl -s localhost:8000/api/daemon/status` (`"simulation_enabled": tr
 Terminal 2, the tracking:
 
 ```bash
-reachy_mini_env/bin/python -m sim.head_tracking
+reachy_mini_env/bin/python -m sim.body_tracking
 ```
 
 Press `q` or `ESC` in the webcam window to quit. The head returns to center. Stop the simulation with `Ctrl+C`
@@ -98,15 +97,16 @@ in terminal 1.
 ### Options
 
 ```bash
-reachy_mini_env/bin/python -m sim.head_tracking --help
+reachy_mini_env/bin/python -m sim.body_tracking --help
   --camera FaceTime    camera name substring or OpenCV index (default FaceTime = built-in Mac camera)
-  --model lite|full    pose model: lite is faster, full is more accurate
+  --model blazepose-lite   pose model (see pose-models.md)
   --rate 20            max head updates per second
   --max-yaw 40         degrees at the left/right image edge
   --max-pitch 25       degrees at the top/bottom image edge (hardware limit is ±40°)
   --deadzone 0.03      ignored offset from the center (fraction of the image)
   --smoothing 0.2      0..1, higher = faster but jerkier
   --host localhost     daemon host
+  --min-score          keypoint confidence (default: per model)
 ```
 
 Checks without the simulation:
@@ -114,7 +114,6 @@ Checks without the simulation:
 ```bash
 reachy_mini_env/bin/python -m sim.camera_check --list    # index and name of each camera
 reachy_mini_env/bin/python -m sim.camera_check --camera FaceTime
-reachy_mini_env/bin/python -m sim.pose_viewer
 ```
 
 ## Troubleshooting

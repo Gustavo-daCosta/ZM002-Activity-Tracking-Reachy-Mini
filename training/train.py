@@ -1,30 +1,33 @@
 """Train the wave classifier on recorded sessions and compare it with the rules.
 
-    reachy_mini_env/bin/python -m training.train [--data-dir training/data/wave] [--out core/models/wave_classifier.joblib]
+    reachy_mini_env/bin/python -m training.train [--data-dir training/data/wave] [--out core/models/wave_classifier.npz]
 
 Neighbouring windows are almost identical, so evaluation never mixes them between train and test:
 with 2+ sessions it leaves one session out at a time, with 1 session it groups by round.
 """
 
 import argparse
-from pathlib import Path
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut, cross_val_predict
 
-from training.dataset import DATA_DIR, list_sessions, load_session, make_windows
-from core.motion.detectors import DEFAULT_MODEL_PATH, RuleWaveDetector, save_classifier
+from core.motion.detectors import MODELS_DIR, RuleWaveDetector
 from core.motion.features import FEATURE_NAMES, features_vector
 from core.motion.forest import export_forest
+from training.dataset import DATA_DIR, list_sessions, load_session, make_windows
+
+DEFAULT_OUT = MODELS_DIR / "wave_classifier.npz"
 
 
 def make_model():
+    """The wave forest, untrained."""
     return RandomForestClassifier(n_estimators=100, max_depth=6, class_weight="balanced", random_state=0)
 
 
 def classification_metrics(y_true, y_pred):
+    """Accuracy, precision, recall, F1 and the [[TN FP] [FN TP]] confusion matrix for the wave class."""
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average="binary", pos_label=1, zero_division=0
     )
@@ -38,6 +41,7 @@ def classification_metrics(y_true, y_pred):
 
 
 def build_dataset(sessions):
+    """Windows of every session as (features, X, y, session_ids, round_ids)."""
     features, labels, session_ids, round_ids = [], [], [], []
     for session_index, session in enumerate(sessions):
         for window_features, label, round_id in make_windows(session):
@@ -50,6 +54,14 @@ def build_dataset(sessions):
 
 
 def train_and_evaluate(sessions):
+    """Cross-validate grouped by session (or round), score the rules on the same windows, fit on all.
+
+    Returns:
+        Dict with the metrics, importances, medians and the fitted `model`.
+
+    Raises:
+        ValueError: No windows, or only one class.
+    """
     features, X, y, session_ids, round_ids = build_dataset(sessions)
     if len(y) == 0:
         raise ValueError("No usable windows: record a session first (python -m training.record)")
@@ -84,6 +96,7 @@ def train_and_evaluate(sessions):
 
 
 def format_report(result):
+    """Render `train_and_evaluate` output as text."""
     lines = [
         f"Sessions: {result['sessions']}  windows: {result['windows']} (wave {result['wave_windows']})  "
         f"evaluation grouped by {result['groups']}",
@@ -105,9 +118,10 @@ def format_report(result):
 
 
 def main(argv=None):
+    """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-dir", default=str(DATA_DIR))
-    parser.add_argument("--out", default=str(DEFAULT_MODEL_PATH))
+    parser.add_argument("--out", default=str(DEFAULT_OUT))
     args = parser.parse_args(argv)
 
     paths = list_sessions(args.data_dir)
@@ -117,10 +131,7 @@ def main(argv=None):
     except ValueError as exc:
         raise SystemExit(str(exc))
     print(format_report(result))
-    save_classifier(result["model"], args.out)
-    forest_path = export_forest(result["model"], Path(args.out).with_suffix(".npz"))
-    print(f"\nSaved classifier to {args.out}")
-    print(f"Saved numpy forest (robot runtime, no scikit-learn) to {forest_path}")
+    print(f"\nSaved numpy forest to {export_forest(result['model'], args.out)}")
 
 
 if __name__ == "__main__":

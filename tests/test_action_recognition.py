@@ -1,7 +1,6 @@
-"""The two action-recognition entry points, as far as they can be checked without a camera or a robot.
+"""The recognition entry points, as far as they can be checked without a camera or a robot.
 
-What is NOT covered here (it needs hardware): the camera loop itself, the robot connection, the antenna
-motion, and whether the recognizer answers a real person in a real room.
+Not covered here (needs hardware): the camera loop itself, the robot connection and the antenna motion.
 """
 
 import signal
@@ -9,12 +8,9 @@ import signal
 import numpy as np
 import pytest
 
-from robot.apps.action_recognition import (
-    MonitorReaction,
-    frame_aspect_ratio,
-    install_signal_handlers,
-    parse_args,
-)
+from robot.apps import common
+from robot.apps.action_recognition import parse_args
+from robot.apps.common import install_signal_handlers
 from core.motion.actions.detector import DEFAULT_ACTION_MODEL
 from core.motion.actions.live import ActionMonitor
 from core.motion.reaction import NEUTRAL_ANTENNAS, antennas_with_neutral
@@ -36,12 +32,11 @@ def test_overrides():
     assert args.width == 480
 
 
-@pytest.mark.parametrize("width,height,expected", [(640, 480, 4 / 3), (1280, 720, 16 / 9), (340, 256, 340 / 256)])
-def test_aspect_ratio_comes_from_the_frame(width, height, expected):
-    """A constant 16/9 shifts elbow/knee angles by up to 17 degrees on non-16/9 cameras, so it must be measured."""
-    frame = np.zeros((height, width, 3), dtype=np.uint8)
-    assert frame_aspect_ratio(frame) == pytest.approx(expected)
-    assert frame_aspect_ratio(frame) != 16 / 9 or (width, height) == (1280, 720)
+def test_wave_app_shares_the_options():
+    from robot.apps.wave_antennas import parse_args as wave_parse_args
+
+    args = wave_parse_args(["--wave-trigger", "rules", "--amplitude", "10"])
+    assert args.model == "movenet-tflite" and args.wave_trigger == "rules" and args.amplitude == 10.0
 
 
 def _monitor():
@@ -55,19 +50,13 @@ def test_monitor_requires_an_aspect_ratio():
         ActionMonitor()  # no default, deliberately
 
 
-def test_sender_adapter_matches_monitor_antennas_exactly():
-    """TargetSender adds the neutral pose itself, ActionMonitor.antennas already has it: they must agree."""
+def test_monitor_antennas_include_the_neutral_pose_exactly_once():
     monitor = _monitor()
-    adapter = MonitorReaction(monitor)
+    assert monitor.antennas(5.0) == pytest.approx(list(NEUTRAL_ANTENNAS))
     assert monitor.reactions["wave"].trigger(100.0)
     for now in (100.0, 100.1, 100.35, 100.9, 101.32, 102.0, 110.0):
-        assert antennas_with_neutral(adapter.angles(now)) == pytest.approx(monitor.antennas(now))
-
-
-def test_sender_adapter_is_neutral_when_nothing_is_running():
-    monitor = _monitor()
-    assert MonitorReaction(monitor).angles(5.0) is None
-    assert antennas_with_neutral(None) == pytest.approx(list(NEUTRAL_ANTENNAS))
+        expected = antennas_with_neutral(monitor.reactions["wave"].angles(now))
+        assert monitor.antennas(now) == pytest.approx(expected)
 
 
 def test_signal_handler_raises_keyboard_interrupt():
@@ -132,22 +121,21 @@ class FakeBackend:
 
 
 def _run_main(monkeypatch, argv, on_frames, monitor_factory=None):
-    """Run `main()` with the robot, the camera and the pose model faked out. Returns the FakeMini.
+    """Run `main()` with the robot, the camera and the pose model faked out. Returns (FakeMini, module).
 
     `on_frames` replaces `wait_for_frames` (return None, a frame, or raise); `monitor_factory` replaces the
-    ActionMonitor constructor, which is how the interrupt window between the frame wait and the vision loop
-    is exercised.
+    ActionMonitor constructor, which is how the interrupt window between the frame wait and the loop is
+    exercised.
     """
     from core.motion.actions import live as live_module
     from robot.apps import action_recognition as module
 
     mini = FakeMini()
-    monkeypatch.setattr(module, "create_backend", lambda name: FakeBackend())
-    monkeypatch.setattr(module, "connect", lambda host: mini)
-    monkeypatch.setattr(module, "RobotCameraSource", lambda mini_: object())
-    monkeypatch.setattr(module, "downscale", lambda frame, width: frame)
-    monkeypatch.setattr(module, "wait_for_frames", lambda source, **kw: on_frames())
-    monkeypatch.setattr(module, "frame_aspect_ratio", lambda frame: 4 / 3)
+    monkeypatch.setattr(common, "create_backend", lambda name: FakeBackend())
+    monkeypatch.setattr(common, "connect", lambda host: mini)
+    monkeypatch.setattr(common, "RobotCameraSource", lambda mini_: object())
+    monkeypatch.setattr(common, "downscale", lambda frame, width: frame)
+    monkeypatch.setattr(common, "wait_for_frames", lambda source, **kw: on_frames())
     if monitor_factory is not None:
         monkeypatch.setattr(live_module, "ActionMonitor", monitor_factory)
     monkeypatch.setattr("sys.argv", ["action_recognition", *argv])
@@ -174,7 +162,7 @@ def test_interrupt_while_waiting_for_frames_puts_the_robot_to_sleep(monkeypatch,
 
 @pytest.mark.parametrize("no_sleep, expected", [([], 1), (["--no-sleep"], 0)])
 def test_interrupt_between_the_frame_wait_and_the_loop_puts_the_robot_to_sleep(monkeypatch, no_sleep, expected):
-    """A SIGHUP arriving while the ActionMonitor is built used to escape the cleanup entirely."""
+    """A SIGHUP arriving while the ActionMonitor is built must still reach the cleanup."""
 
     def interrupting_monitor(*args, **kwargs):
         raise KeyboardInterrupt

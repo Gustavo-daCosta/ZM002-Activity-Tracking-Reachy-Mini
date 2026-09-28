@@ -243,7 +243,7 @@ def test_an_occurrence_during_an_active_reaction_is_counted_but_not_answered():
     assert monitor.note("wave", now=0.30) is False       # the squat reaction is still running
     assert monitor.counts["wave"] == 1                   # but it was recognized, so it is counted
     assert monitor.counts["squat"] == 1
-    assert monitor.reaction_for("wave").angles(0.30) is None   # and its antennas never started
+    assert monitor.reactions.get("wave").angles(0.30) is None   # and its antennas never started
 
 
 def test_the_antenna_target_stays_continuous_when_a_second_action_arrives():
@@ -265,7 +265,7 @@ def test_none_is_never_answered():
     monitor = ActionMonitor(1.0, model_path=None)
     assert monitor.note(NONE, now=0.0) is False
     assert monitor.counts[NONE] == 0
-    assert monitor.reaction_for(NONE) is None
+    assert monitor.reactions.get(NONE) is None
 
 
 # --- the antennas -----------------------------------------------------------------------------------
@@ -277,13 +277,13 @@ def test_every_action_has_its_own_antenna_reaction():
     monitor = ActionMonitor(1.0, model_path=None)
     for action in ACTIONS:
         if action == NONE:
-            assert monitor.reaction_for(action) is None
+            assert monitor.reactions.get(action) is None
         else:
-            reaction = monitor.reaction_for(action)
+            reaction = monitor.reactions.get(action)
             assert reaction is not None
             assert reaction.amplitude_deg > 0
     # Distinct actions must not look the same on the antennas.
-    signatures = {(monitor.reaction_for(a).amplitude_deg, monitor.reaction_for(a).freq_hz)
+    signatures = {(monitor.reactions.get(a).amplitude_deg, monitor.reactions.get(a).freq_hz)
                   for a in ACTIONS if a != NONE}
     assert len(signatures) == len(ACTIONS) - 1
 
@@ -297,7 +297,7 @@ def test_the_antennas_return_to_neutral_between_reactions():
     monitor.note("jumping_jacks", now=0.0)
     moved = monitor.antennas(0.13)
     assert moved != pytest.approx(list(NEUTRAL_ANTENNAS))
-    reaction = monitor.reaction_for("jumping_jacks")
+    reaction = monitor.reactions.get("jumping_jacks")
     assert monitor.antennas(reaction.duration_s + 1.0) == pytest.approx(list(NEUTRAL_ANTENNAS))
 
 
@@ -312,7 +312,7 @@ def test_every_reaction_ends_where_it_started():
 
     monitor = ActionMonitor(1.0, model_path=None)
     for action, signature in REACTION_SIGNATURES.items():
-        reaction = monitor.reaction_for(action)
+        reaction = monitor.reactions.get(action)
         assert signature["cycles"] == int(signature["cycles"])
         assert reaction.duration_s == pytest.approx(signature["cycles"] / signature["freq_hz"])
         assert reaction.trigger(0.0)
