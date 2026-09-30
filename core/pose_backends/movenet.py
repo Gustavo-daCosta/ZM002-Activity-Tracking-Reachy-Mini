@@ -1,7 +1,8 @@
-"""MoveNet SinglePose Lightning (COCO-17, ONNX Runtime): single-shot, no person detector.
+"""MoveNet SinglePose Lightning (COCO-17): single-shot, no person detector.
 
-Model: huggingface.co/Xenova/movenet-singlepose-lightning, input int32 [1,192,192,3] (RGB, aspect
-preserved with black padding), output float [1,1,17,3] as (y, x, score) in padded-square space.
+Two runtimes share the pre/post-processing: fp32 ONNX on onnxruntime (~95 ms on the robot) and int8
+TFLite on LiteRT/XNNPACK (~34 ms, the robot default). Input [1,192,192,3] RGB letterboxed with black
+padding, output float [1,1,17,3] as (y, x, score) in padded-square space.
 """
 
 import time
@@ -13,8 +14,10 @@ from core.pose_backends import PoseResult
 from core.vision import download_model
 
 INPUT_SIZE = 192
-MODEL_FILE = "movenet-lightning.onnx"
-MODEL_URL = "https://huggingface.co/Xenova/movenet-singlepose-lightning/resolve/main/onnx/model.onnx"
+ONNX_FILE = "movenet-lightning.onnx"
+ONNX_URL = "https://huggingface.co/Xenova/movenet-singlepose-lightning/resolve/main/onnx/model.onnx"
+TFLITE_FILE = "movenet-lightning-int8.tflite"
+TFLITE_URL = "https://huggingface.co/nxp/movenet-imx/resolve/main/original_model/movenet_quant.tflite"
 
 
 def letterbox(frame_bgr, size):
@@ -55,7 +58,7 @@ class MoveNetBackend:
         """Load the ONNX session, downloading the model on first use."""
         import onnxruntime as ort
 
-        path = download_model(MODEL_FILE, MODEL_URL)
+        path = download_model(ONNX_FILE, ONNX_URL)
         self._session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
         self._input = self._session.get_inputs()[0].name
 
@@ -64,12 +67,47 @@ class MoveNetBackend:
         start = time.perf_counter()
         square, scale, pad = letterbox(frame_bgr, INPUT_SIZE)
         output = self._session.run(None, {self._input: square[None].astype(np.int32)})[0]
-        keypoints = decode_keypoints(output, scale, pad, frame_bgr.shape)
-        ms = (time.perf_counter() - start) * 1000
-        if not (keypoints[:, 2] >= self.default_min_score).any():
-            return PoseResult(timings={"pose": ms})
-        return PoseResult(keypoints=keypoints, timings={"pose": ms})
+        return _result(output, scale, pad, frame_bgr.shape, start, self.default_min_score)
 
     def close(self):
         """Drop the session."""
         self._session = None
+
+
+class MoveNetTFLiteBackend:
+    """MoveNet int8 on the LiteRT interpreter."""
+
+    name = "movenet-tflite"
+    default_min_score = 0.3
+
+    def __init__(self, threads=4):
+        """Load the interpreter, downloading the model on first use."""
+        from ai_edge_litert.interpreter import Interpreter
+
+        path = download_model(TFLITE_FILE, TFLITE_URL)
+        self._interpreter = Interpreter(model_path=str(path), num_threads=threads)
+        self._interpreter.allocate_tensors()
+        self._input = self._interpreter.get_input_details()[0]
+        self._output = self._interpreter.get_output_details()[0]
+
+    def infer(self, frame_bgr) -> PoseResult:
+        """Run the model on one BGR frame."""
+        start = time.perf_counter()
+        square, scale, pad = letterbox(frame_bgr, INPUT_SIZE)
+        self._interpreter.set_tensor(self._input["index"], square[None].astype(self._input["dtype"]))
+        self._interpreter.invoke()
+        output = self._interpreter.get_tensor(self._output["index"])
+        return _result(output, scale, pad, frame_bgr.shape, start, self.default_min_score)
+
+    def close(self):
+        """Drop the interpreter."""
+        self._interpreter = None
+
+
+def _result(output, scale, pad, frame_shape, start, min_score):
+    """Decode one model output; no keypoints when no joint clears `min_score`."""
+    keypoints = decode_keypoints(output, scale, pad, frame_shape)
+    ms = (time.perf_counter() - start) * 1000
+    if not (keypoints[:, 2] >= min_score).any():
+        return PoseResult(timings={"pose": ms})
+    return PoseResult(keypoints=keypoints, timings={"pose": ms})

@@ -74,6 +74,7 @@ windowing, and per-repetition recognition with an honest confidence floor.
 | [docs/robot.md](docs/robot.md) | Going from simulation to the physical robot |
 | [docs/pose-models.md](docs/pose-models.md) | The four pose backends and their measured cost |
 | [docs/action-recognition.md](docs/action-recognition.md) | Activity recognition, training, and the honest per-class results |
+| [walkthrough.md](walkthrough.md) | Code walkthrough, file by file: SDK, pose, windows, features, the forest |
 | [docs/demo.md](docs/demo.md) | The one-command demo and how it fails |
 | [datasets/SOURCES.md](datasets/SOURCES.md) | Dataset provenance, checksums and licences |
 

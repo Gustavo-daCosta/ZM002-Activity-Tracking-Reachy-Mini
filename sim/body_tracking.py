@@ -20,10 +20,11 @@ import time
 
 import cv2
 
-from core.body_center import body_center
 from core.metrics import StageStats, format_summary
+from core.motion.actions import DEFAULT_ACTION_MODEL, ActionDetector, ActionMonitor
+from core.motion.wave import WaveMonitor
 from core.pose_backends import BACKENDS, create_backend
-from core.tracking_math import HeadFollower, image_error_to_angles
+from core.tracking import HeadFollower, body_center, image_error_to_angles
 from core.vision import add_camera_argument, draw_coco_skeleton, open_camera, put_text
 
 
@@ -94,8 +95,6 @@ def main():
         cap.release()
         raise SystemExit("--detect-wave and --detect-actions both drive the antennas: pick one.")
     if args.detect_wave:
-        from core.motion.live import WaveMonitor
-
         try:
             monitor = WaveMonitor(trigger=args.wave_trigger)
         except ValueError as exc:
@@ -105,15 +104,13 @@ def main():
         print(f"Wave recognition on (trigger: {monitor.trigger_name})")
     if args.detect_actions:
         # The ActionMonitor is built on the first frame: it needs the camera's real aspect ratio.
-        from core.motion.actions.detector import DEFAULT_ACTION_MODEL, ActionDetector
-
         action_model = args.action_model or DEFAULT_ACTION_MODEL
         action_detector = ActionDetector(action_model)
         if not action_detector.available:
             backend.close()
             cap.release()
             raise SystemExit(f"No action model at {action_model}. Train it with "
-                             "`python -m training.actions.train --ntu ... --ucf ...`.")
+                             "`python -m training.train_actions --ntu ... --ucf ...`.")
         print(f"Action recognition on ({action_model}). Stand back far enough for your legs to be in frame.")
 
     print(f"Model {backend.name} (min score {min_score}). Connecting to the daemon on {args.host}...")
@@ -137,8 +134,6 @@ def main():
                     break
                 frame = cv2.flip(frame, 1)  # mirror: behaves like looking at the robot
                 if action_model is not None and monitor is None:
-                    from core.motion.actions.live import ActionMonitor
-
                     monitor = ActionMonitor(frame.shape[1] / frame.shape[0], min_score=min_score,
                                             detector=action_detector)
                     print(f"Action window using the camera's own aspect ratio: "

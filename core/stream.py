@@ -15,19 +15,11 @@ img{max-width:100%;max-height:100vh}</style></head>
 class MjpegServer:
     """Holds the latest JPEG; every connected client gets it as fast as it can consume it."""
 
-    def __init__(self, port=8080, host="0.0.0.0", quality=70, fps=15.0):
-        """Bind the server (not started yet).
-
-        Args:
-            port: TCP port (0 = any free port).
-            host: Bind address.
-            quality: JPEG quality.
-            fps: Unused pacing hint kept for callers.
-        """
+    def __init__(self, port=8080, host="0.0.0.0", quality=70):
+        """Bind the server (not started yet) on `host:port` (port 0 = any free port)."""
         self._jpeg = None
         self._condition = threading.Condition()
         self._quality = quality
-        self._interval = 1.0 / fps
         self._server = ThreadingHTTPServer((host, port), _make_handler(self))
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, name="mjpeg", daemon=True)
@@ -41,13 +33,6 @@ class MjpegServer:
         """Start serving and return self."""
         self._thread.start()
         return self
-
-    def __enter__(self):
-        return self.start()
-
-    def __exit__(self, *exc):
-        self.close()
-        return False
 
     def close(self):
         """Stop serving and release the socket."""

@@ -11,7 +11,8 @@ From this Mac (pose model here, frames over WebRTC, optional preview window):
 Deployment: robot/deploy.sh (see docs/robot.md).
 """
 
-from core.motion.reaction import antennas_with_neutral
+from core.motion.antennas import antennas_with_neutral
+from core.motion.wave import WaveMonitor
 from robot.apps.common import make_parser, run
 
 
@@ -33,8 +34,6 @@ def parse_args(argv=None):
 def main():
     """Entry point."""
     args = parse_args()
-    from core.motion.live import WaveMonitor
-
     # Built before touching the robot, so a missing classifier fails here.
     kwargs = {"model_path": args.classifier} if args.classifier else {}
     try:

@@ -5,11 +5,12 @@ import math
 import signal
 import time
 
-from core.frames import RobotCameraSource, downscale
 from core.metrics import StageStats, format_summary
-from core.motion.reaction import NEUTRAL_ANTENNAS
-from core.motion.sender import TargetSender
+from core.motion.antennas import NEUTRAL_ANTENNAS, TargetSender
 from core.pose_backends import BACKENDS, create_backend
+from core.stream import MjpegServer
+from core.tracking import CenteringFollower, body_center
+from core.vision import RobotCameraSource, downscale, draw_coco_skeleton, put_text
 
 FRAME_TIMEOUT_S = 10.0
 
@@ -91,8 +92,6 @@ def follow_line(follower, error, body_measured):
 
 def annotate(frame, result, min_score, model_name, panel, panel_lines):
     """Draw the skeleton and the live panel on the frame (window and MJPEG stream)."""
-    from core.vision import draw_coco_skeleton, put_text
-
     if result.keypoints is not None:
         draw_coco_skeleton(frame, result.keypoints, min_score)
     put_text(frame, f"{model_name}  FPS {panel['fps']:.1f}", 1)
@@ -130,8 +129,6 @@ def run(args, make_monitor, events, summary, window_title):
 
     follower = None
     if args.follow:
-        from core.tracking_math import CenteringFollower
-
         follower = CenteringFollower(
             gain=args.follow_gain, max_yaw=args.max_yaw, max_pitch=args.max_pitch, deadzone=args.deadzone,
             return_speed=args.follow_gain / 6, mirrored=False, body_gain=args.body_gain,
@@ -140,8 +137,6 @@ def run(args, make_monitor, events, summary, window_title):
 
     stream = None
     if args.stream_port:
-        from core.stream import MjpegServer
-
         stream = MjpegServer(port=args.stream_port).start()
 
     stats = StageStats()
@@ -191,8 +186,6 @@ def run(args, make_monitor, events, summary, window_title):
 
                 head = None
                 if follower is not None:
-                    from core.body_center import body_center
-
                     target = body_center(result.keypoints, min_score)
                     error = (target[0] - 0.5, target[1] - 0.5) if target else None
                     yaw, pitch = follower.update(error, now - last_follow)

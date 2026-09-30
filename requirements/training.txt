@@ -3,6 +3,4 @@
 # The robot venv deliberately does NOT get scikit-learn: it runs the numpy `.npz` forest export instead
 # (core/motion/forest.py), which is ~30 ms per evaluation cheaper on the CM4. Nothing in core/ imports
 # sklearn.
-#
-# The test suite also needs this file: it trains small forests to check the .npz export round-trips.
 scikit-learn==1.9.1

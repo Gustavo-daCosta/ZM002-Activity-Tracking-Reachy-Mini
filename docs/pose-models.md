@@ -21,6 +21,7 @@ Options: `--camera`, `--max-yaw`, `--max-pitch`, `--deadzone`, `--smoothing`, `-
 |---|---|---|---|
 | `blazepose-lite` / `blazepose-full` | single-stage (Google BlazePose, MediaPipe) | pose landmarker (internal person detection + tracking between frames) | 33 → mapped to COCO 17 |
 | `vitpose-s` | top-down (ViTPose-S, transformer) | EfficientDet-Lite0 person detector **every frame**, then ViTPose on the 192×256 person crop (ONNX Runtime, CPU) | COCO 17 |
+| `movenet-lightning` / `movenet-tflite` | single-shot (Google MoveNet Lightning) | fp32 ONNX on onnxruntime, or int8 TFLite on LiteRT (the robot: ~34 ms/frame) | COCO 17 |
 
 ViTPose pre/post-processing follows [easy_ViTPose](https://github.com/JunkyByte/easy_ViTPose) (RGB, ImageNet
 normalization, 3:4 crop, UDP heatmap decoding). On the same webcam frame its nose/eyes/shoulders land within

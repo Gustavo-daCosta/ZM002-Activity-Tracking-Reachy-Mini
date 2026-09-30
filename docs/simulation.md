@@ -21,7 +21,7 @@ the robot camera. No robot and no preflight needed: the daemon runs on `localhos
 - **No camera or microphone in the simulation.** The daemon is started with `--no-media` and the SDK connects
   with `media_backend="no_media"`. The webcam is read directly with OpenCV and "pretends" to be the robot camera.
 - **Tracking.** MediaPipe Pose Landmarker (VIDEO mode, CPU) finds the nose in the mirrored frame. Its offset
-  from the image center becomes head angles (`tracking_math.py`):
+  from the image center becomes head angles (`core/tracking.py`):
   - nose on the right edge → `+max_yaw` (the head turns to its left, toward you); left edge → `-max_yaw`
   - nose at the bottom → `+max_pitch` (the head looks down); top → `-max_pitch`
   - a small dead zone around the center avoids jitter, and exponential smoothing avoids jerky moves
@@ -32,7 +32,7 @@ the robot camera. No robot and no preflight needed: the daemon runs on `localhos
 > This is position mapping, not closed-loop tracking. In the simulation the camera does not move with the head.
 > On the real robot the camera is in the head, so the same mapping would chase its own motion. There, use the
 > daemon's head tracking or a relative (error-driven) controller instead (see `robot/apps/head_tracking.py`
-> and `CenteringFollower` in `core/tracking_math.py`).
+> and `CenteringFollower` in `core/tracking.py`).
 
 ## Files
 
@@ -48,9 +48,8 @@ Shared with the robot, under `core/` -- the same code runs in both places:
 
 | File | Purpose |
 |---|---|
-| `core/vision.py` | Webcam opening, pose model download, drawing helpers |
-| `core/tracking_math.py` | Pure math (image -> angles, smoothing), unit tested |
-| `core/body_center.py` | Target rule: torso -> shoulders -> nose |
+| `core/vision.py` | Cameras (webcam by name, robot camera), model download, drawing helpers |
+| `core/tracking.py` | Target rule (torso -> shoulders -> nose) and image -> head/body angles |
 | `core/pose_backends/` | Pose models behind one interface -- see [pose-models.md](pose-models.md) |
 | `core/motion/` | Wave and action recognition -- see [action-recognition.md](action-recognition.md) |
 | `core/metrics.py` | Per-stage timings, FPS and exit summary |

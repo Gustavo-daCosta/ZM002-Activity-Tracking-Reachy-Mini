@@ -11,5 +11,5 @@ ai-edge-litert
 onnxruntime==1.27.0
 # Resizing / color conversion; headless because the robot has no display.
 opencv-python-headless==4.12.0.88
-# No scikit-learn: the classifier runs from models/wave_classifier.npz (simulation/motion/forest.py),
-# which is ~30 ms per evaluation cheaper here and removes the pickle's version coupling.
+# No scikit-learn: the classifiers run from the core/models/*.npz exports (core/motion/forest.py),
+# ~30 ms per evaluation cheaper here and no pickle version coupling.

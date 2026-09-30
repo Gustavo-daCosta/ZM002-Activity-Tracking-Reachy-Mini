@@ -9,14 +9,13 @@ On top of pose estimation, `body_tracking --detect-wave` recognizes a **hand wav
 its antennas. Two detectors run side by side on the same 1.5 s sliding window of poses (normalized to the shoulder
 midpoint and shoulder width, with a frame aspect-ratio correction), so they can be compared live:
 
-- **rules** (`motion/detectors.py`): wrist above the shoulder, ≥3 horizontal reversals, ≥0.3 shoulder-widths of
+- **rules** (`core/motion/wave.py`): wrist above the shoulder, ≥3 horizontal reversals, ≥0.3 shoulder-widths of
   x amplitude;
-- **classifier** (`motion/train.py`): RandomForest on 9 window features (reversals, reversal rate, amplitudes,
-  speed, height, validity), exported to `core/models/wave_classifier.npz`.
+- **classifier** (`training/train_wave.py`): RandomForest on the 9 window features of `core/motion/features.py`
+  (reversals, reversal rate, amplitudes, speed, height, validity), exported to `core/models/wave_classifier_ntu.npz`.
 
 ```bash
-reachy_mini_env/bin/python -m training.record          # guided recording (WAVE / NOT WAVE rounds)
-reachy_mini_env/bin/python -m training.train           # trains + honest grouped evaluation
+reachy_mini_env/bin/python -m training.record          # guided recording (WAVE / NOT WAVE rounds), an external test set
 reachy_mini_env/bin/python -m sim.body_tracking --detect-wave [--wave-trigger rules|classifier]
 ```
 
@@ -25,12 +24,11 @@ Measured on the 2 recorded sessions (416 windows, 220 wave), evaluated leave-one
 | Detector | Accuracy | Precision | Recall | F1 |
 |---|---|---|---|---|
 | rules | 0.832 | 1.000 | 0.682 | 0.811 |
-| classifier (trained on those sessions) | 0.880 | 0.905 | 0.864 | 0.884 |
+| classifier trained on those sessions (historical, no longer shipped) | 0.880 | 0.905 | 0.864 | 0.884 |
 | **classifier trained on NTU** (default) | **0.950** | **0.976** | 0.927 | **0.951** |
 
-The default model is the NTU-trained one (see below): it never saw these recordings and still scores higher on
-them than the model fitted to them. `--classifier core/models/wave_classifier.npz` selects the
-self-trained one.
+The shipped model is the NTU-trained one (see below): it never saw these recordings and still scores higher on
+them than a model fitted to them did, which is why the self-trained variant was dropped.
 
 The rules never fire on a non-wave but miss a third of the waves (the median window has exactly 3 reversals, the
 threshold); the classifier trades a little precision for clearly better recall. Top feature importances:
@@ -38,7 +36,7 @@ threshold); the classifier trades a little precision for clearly better recall. 
 
 ### Training on public datasets
 
-The two recorded sessions are one person, one camera, one room. `motion/public_data.py` reads the COCO-17
+The two recorded sessions are one person, one camera, one room. `training/data.py` reads the COCO-17
 skeleton files published by MMAction2 / PySkl (no video download, no pose estimation to run) and turns them
 into the same 1.5 s windows, resampled to the robot's ~10 FPS:
 
@@ -48,7 +46,7 @@ into the same 1.5 s windows, resampled to the robot's ~10 FPS:
 | [`hmdb51_2d.pkl`](https://download.openmmlab.com/mmaction/v1.0/skeleton/data/hmdb51_2d.pkl) | 203 MB | HMDB51: 6 371 movie clips; class **50 = "wave"** (104 clips), in the wild - kept as an external test set |
 
 ```bash
-reachy_mini_env/bin/python -m training.train_public --ntu <ntu60_hrnet.pkl> --hmdb <hmdb51_2d.pkl>
+reachy_mini_env/bin/python -m training.train_wave --ntu <ntu60_hrnet.pkl> --hmdb <hmdb51_2d.pkl>
 ```
 
 Evaluation is grouped by subject, so the reported numbers are for people the model never saw; HMDB51 and our
@@ -74,8 +72,8 @@ for NTU, Kuehne et al. (2011) for HMDB51; both are for research use.
 
 `--detect-actions` recognizes **`none`, `wave`, `pushup`, `squat`, `clapping`, `jumping_jacks`** from a 3 s
 sliding window of COCO-17 keypoints, and the antennas answer each one with its own amplitude/frequency
-signature, so you can tell from across the room what was recognized. One model (`core/motion/actions/`,
-shipped as `models/action_classifier.npz`) runs on both the Mac and the robot: it is COCO-17 only, numpy
+signature, so you can tell from across the room what was recognized. One model (`core/motion/actions.py`,
+shipped as `core/models/action_classifier.npz`) runs on both the Mac and the robot: it is COCO-17 only, numpy
 only, and needs no scikit-learn at runtime.
 
 ```bash
@@ -143,7 +141,7 @@ ROSE Lab terms**, and **UCF101 is research-use only**. The pickles are 1.8 GB an
 
 ```bash
 tools/download_datasets.sh
-reachy_mini_env/bin/python -m training.actions.train --ntu datasets/ntu60_hrnet.pkl \
+reachy_mini_env/bin/python -m training.train_actions --ntu datasets/ntu60_hrnet.pkl \
     --ucf datasets/ucf101_hrnet.pkl --hmdb datasets/hmdb51_2d.pkl \
     --crop-fraction 0.25
 ```

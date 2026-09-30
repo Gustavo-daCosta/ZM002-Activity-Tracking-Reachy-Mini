@@ -10,7 +10,7 @@ idea, because the robot is a 2 GB Raspberry Pi that cannot run most of what a la
 
 | Directory | Needs | Contents |
 |---|---|---|
-| `core/` | **both** | Pose backends, motion & action recognition, vision, frame sources, metrics, tracked `.npz` models |
+| `core/` | **both** | Pose backends, motion recognition (`core/motion/`), vision, tracking, metrics, tracked `.npz` models |
 | `robot/` | the physical robot | Connection, mandatory preflight, runnable apps, deployment, the demo script |
 | `sim/` | only this computer | MuJoCo simulation + webcam tracking — no robot, no preflight |
 | `training/` | only this computer | Recording, dataset loaders, trainers — **the only part needing scikit-learn** |
@@ -38,12 +38,14 @@ reachy_mini_env/bin/python -m sim.body_tracking --detect-actions
 ./robot/demo.sh                                   # one command: sync, preflight, run
 ```
 
-Retraining a model, or running the test suite, also needs `requirements/training.txt` (scikit-learn):
+Retraining a model also needs `requirements/training.txt` (scikit-learn):
 
 ```bash
 reachy_mini_env/bin/python -m pip install -r requirements/training.txt
-reachy_mini_env/bin/python -m pytest tests -q          # neither robot nor webcam needed
 ```
+
+There is no unit-test suite, by decision: changes are verified end to end, on the webcam simulation or on
+the robot.
 
 ## What it recognizes, honestly
 

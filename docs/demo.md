@@ -38,5 +38,5 @@ seconds. If it stays blank, the port is wrong or blocked: try `./demo.sh --strea
 I2C. Do not try to fix it before the meeting.
 
 **"4/4" fails with "no such file or directory" (venv/app not found)** — this is a robot that has never been
-set up for the demo. `demo.sh` only syncs code (`deploy_wave_robot.sh --code-only`), it does not create the
+set up for the demo. `demo.sh` only syncs code (`robot/deploy.sh --code-only`), it does not create the
 venv. Run `robot/deploy.sh` once (no flags) to set it up, then `./demo.sh` works as usual.

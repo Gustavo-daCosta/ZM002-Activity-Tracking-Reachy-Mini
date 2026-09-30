@@ -14,11 +14,11 @@ ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.wave_antennas -
 ```
 
 `robot/apps/wave_antennas.py` is headless by default and imports the same `core.motion` /
-`core.pose_backends` code; `core/frames.py` provides the robot frame source. Two things differ on the
-robot: the pose model is **MoveNet Lightning** (`--model movenet-lightning`, ONNX) because the mediapipe aarch64
+`core.pose_backends` code; `RobotCameraSource` in `core/vision.py` provides the robot frames. Two things differ on
+the robot: the pose model is **MoveNet Lightning int8** (`--model movenet-tflite`) because the mediapipe aarch64
 binaries abort on the CM4's Cortex-A72 (no AES instructions), and the classifier runs from
-`models/wave_classifier.npz` through `motion/forest.py` (plain numpy, no scikit-learn, ~30 ms per evaluation
-cheaper than `predict_proba`). `--follow` makes the robot track the person's body: the image error feeds the *rate* of the gaze (an
+`core/models/wave_classifier_ntu.npz` through `core/motion/forest.py` (plain numpy, no scikit-learn, ~30 ms per
+evaluation cheaper than `predict_proba`). `--follow` makes the robot track the person's body: the image error feeds the *rate* of the gaze (an
 integrating controller, which actually centers the person, unlike a proportional one) and the body rotates to
 extend the head's reach. Measured on the robot: the head pose is **absolute** (base frame) — rotating the body
 makes the IK counter-rotate the head and the camera stays put, so the body does not add to the gaze, it only
@@ -31,7 +31,7 @@ headless while you watch what it sees from any browser. `--wave-seconds` / `--co
 antennas wave and how soon another wave is answered (1.2 s + 0.5 s by default, so waving repeatedly is answered
 about every 1.7 s).
 
-The antennas are driven by their own 50 Hz thread (`motion/sender.py`): the vision loop is far too slow to
+The antennas are driven by their own 50 Hz thread (`TargetSender` in `core/motion/antennas.py`): the vision loop is far too slow to
 sample the wave smoothly and the movement looked stepped. Measured on the robot: **8.7 FPS**, pose 34 ms
 (MoveNet int8 on TFLite/XNNPACK), motion 3 ms. The remaining limit is the camera, which hands the SDK about
 10 frames per second. Step-by-step deployment notes, wheel availability for

@@ -13,10 +13,10 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from core.motion import OTHER, PAUSE, WAVE
+from core.motion.wave import OTHER, PAUSE, WAVE
 from core.pose_backends import BACKENDS, create_backend
 from core.vision import add_camera_argument, draw_coco_skeleton, open_camera, put_text
-from training.dataset import DATA_DIR, save_session
+from training.data import DATA_DIR, save_session
 
 OTHER_HINTS = (
     "stand still",

@@ -78,8 +78,8 @@ training/   needs only this Mac, and needs scikit-learn
 tools/      developer utilities (datasets, SSH setup, API reference)
 ```
 
-- `core/` — pose backends, motion/action recognition, vision, frame sources, metrics, tracking math and the
-  tracked `.npz` models. It imports nothing from `robot/`, `sim/` or `training/`, and that direction must
+- `core/` — pose backends, motion recognition (`core/motion/`: window, features, forest, wave, actions,
+  antennas), vision, tracking, metrics and the tracked `.npz` models. It imports nothing from `robot/`, `sim/` or `training/`, and that direction must
   stay one-way: anything in `core/` is code you are also shipping to a Raspberry Pi CM4.
 - `robot/` — `connect.py` (`ROBOT_IP`, `resolve_host()`, `connect_robot(media, sleep_on_exit, needs)`,
   `RobotNotReady`), `preflight.py` (state check/fix CLI, stdlib only), `apps/` (runnable entry points:
@@ -92,21 +92,25 @@ tools/      developer utilities (datasets, SSH setup, API reference)
   `--detect-actions` add recognition with the antennas answering. The webcam is selected **by name**
   (`--camera FaceTime`, default) because OpenCV indices swap when an iPhone joins as a Continuity Camera —
   never pass a numeric index without checking `python -m sim.camera_check --list`.
-- `training/` — recording, dataset loaders and the trainers. **This is the only part that needs
-  scikit-learn, and the robot venv deliberately does not have it.** `robot/deploy.sh` ships `core/` and
+- `training/` — `record.py`, `data.py` (recorded sessions + public dataset loaders), `train_wave.py` and
+  `train_actions.py`. **This is the only part that needs scikit-learn, and the robot venv deliberately
+  does not have it.** `robot/deploy.sh` ships `core/` and
   `robot/` and therefore excludes this directory by construction. If you find yourself wanting to import
   `training.*` from `core/`, that is the boundary telling you the code belongs somewhere else.
 - `requirements/` — `sim.txt` (mediapipe pinned to 0.10.35; 1.0.1 aborts on macOS arm64), `robot.txt`
   (aarch64: mediapipe must be **1.0.1**, but BlazePose cannot run on this CPU at all — see below) and
-  `training.txt` (scikit-learn, which the test suite also needs). Every pin is explained in place.
+  `training.txt` (scikit-learn). Every pin is explained in place.
 - `core/models/` — the `.npz` forests are **tracked** (nothing runs without them); pose weights (`.onnx`,
   `.tflite`, `.task`) download on first run. See `.gitignore`.
 - `datasets/` — 1.8 GB of HRNet COCO-17 skeleton pickles (NTU RGB+D 60, UCF101, HMDB51), gitignored except
   `datasets/SOURCES.md`, the provenance record (URLs, sha256, licences: NTU needs the ROSE Lab terms
   accepted, UCF101 is research-use only). Fetch with `tools/download_datasets.sh`.
-- Tests: `reachy_mini_env/bin/python -m pytest tests -q` (no robot needed). Keep preflight logic covered.
+- Tests: **none, by decision.** There is no unit-test suite and none is to be written unless the user
+  explicitly asks. Verify end to end: replay `training/data/wave/*.npz` through `WaveMonitor` /
+  `ActionMonitor` with a throwaway script, run `sim.body_tracking` on the webcam, or run the app on the
+  robot with the user watching.
 - Docs: `docs/` — `overview.md` (what runs where, quickstart), `simulation.md`, `robot.md`,
-  `pose-models.md`, `action-recognition.md`, `demo.md`.
+  `pose-models.md`, `action-recognition.md`, `demo.md`; `walkthrough.md` at the repo root is the code walkthrough, file by file.
 
 ## Recognition models: what is honestly demonstrable
 

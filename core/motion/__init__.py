@@ -1,20 +1,6 @@
-"""Motion recognition from sequences of COCO-17 keypoints."""
+"""Motion recognition from sequences of COCO-17 keypoints.
 
-from dataclasses import dataclass, field
-
-WAVE, OTHER, PAUSE = 1, 0, -1
-
-
-@dataclass
-class Detection:
-    """Result of one wave detector.
-
-    Attributes:
-        is_wave: Whether the window was classified as a wave.
-        score: Confidence in [0, 1].
-        details: Detector-specific values shown on the overlay.
-    """
-
-    is_wave: bool
-    score: float
-    details: dict = field(default_factory=dict)
+window.py   sliding window + normalizers        features.py  wave and action feature sets
+forest.py   numpy random forest (no sklearn)     wave.py      wave detectors and WaveMonitor
+actions.py  ActionDetector and ActionMonitor     antennas.py  antenna reactions and the 50 Hz sender
+"""

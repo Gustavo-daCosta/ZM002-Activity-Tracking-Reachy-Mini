@@ -39,7 +39,7 @@ BACKENDS = {
     "blazepose-lite": ("core.pose_backends.blazepose", "BlazePoseBackend", ("lite",)),
     "blazepose-full": ("core.pose_backends.blazepose", "BlazePoseBackend", ("full",)),
     "movenet-lightning": ("core.pose_backends.movenet", "MoveNetBackend", ()),
-    "movenet-tflite": ("core.pose_backends.movenet_tflite", "MoveNetTFLiteBackend", ()),
+    "movenet-tflite": ("core.pose_backends.movenet", "MoveNetTFLiteBackend", ()),
     "vitpose-s": ("core.pose_backends.vitpose", "ViTPoseBackend", ()),
 }
 

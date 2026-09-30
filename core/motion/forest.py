@@ -9,23 +9,24 @@ from pathlib import Path
 
 import numpy as np
 
-from core.motion.actions import NONE
 from core.motion.features import FEATURE_NAMES
 from core.motion.window import WINDOW_S
 
+MODELS_DIR = Path(__file__).resolve().parents[1] / "models"
+NONE = "none"
 LEAF = -1
 
 
 @dataclass
 class NumpyForest:
-    """Decision trees as flat arrays.
+    """Decision trees as flat arrays, one entry per tree in every list.
 
     Attributes:
-        children_left: Per tree, left child index per node (LEAF for leaves).
-        children_right: Per tree, right child index per node.
-        feature: Per tree, feature index compared at each node.
-        split_threshold: Per tree, value each node compares its feature against.
-        class_proba: Per tree, (nodes, n_classes) class probabilities.
+        children_left: Left child index per node (LEAF for leaves).
+        children_right: Right child index per node.
+        feature: Feature index compared at each node.
+        split_threshold: Value each node compares its feature against.
+        class_proba: (nodes, n_classes) class probabilities.
         feature_names: Names the sample vector must follow.
         classes: Class labels, in column order.
         threshold: Binary decision threshold (wave model).
@@ -64,24 +65,13 @@ class NumpyForest:
         """Probability of the wave class, for the binary wave model."""
         return float(self._leaf_probabilities(sample)[self.classes.index(1)])
 
-    def predict_from(self, probabilities: dict):
-        """Argmax of an already-computed probability dict, unless it fails its class floor.
-
-        Args:
-            probabilities: Output of `probabilities()`.
-
-        Returns:
-            (class name, probability), or (NONE, 0.0) below the floor.
-        """
-        name = max(probabilities, key=probabilities.get)
-        probability = probabilities[name]
-        if probability < self.thresholds.get(name, 0.0):
-            return NONE, 0.0
-        return name, float(probability)
-
     def predict(self, sample):
-        """(class name, probability) for one sample; see `predict_from`."""
-        return self.predict_from(self.probabilities(sample))
+        """(class name, probability): the argmax, or (NONE, 0.0) when it fails its class floor."""
+        probabilities = self.probabilities(sample)
+        name = max(probabilities, key=probabilities.get)
+        if probabilities[name] < self.thresholds.get(name, 0.0):
+            return NONE, 0.0, probabilities
+        return name, float(probabilities[name]), probabilities
 
 
 def export_forest(model, path, feature_names=FEATURE_NAMES, window_s=WINDOW_S, threshold=0.5,
@@ -128,14 +118,6 @@ def export_forest(model, path, feature_names=FEATURE_NAMES, window_s=WINDOW_S, t
 def load_forest(path, feature_names=FEATURE_NAMES, window_s=WINDOW_S) -> NumpyForest:
     """Load an exported forest.
 
-    Args:
-        path: The `.npz` written by `export_forest`.
-        feature_names: Feature order the caller will feed it.
-        window_s: Window length the caller uses.
-
-    Returns:
-        The forest.
-
     Raises:
         ValueError: The file was exported with other features or another window length.
     """
@@ -144,8 +126,7 @@ def load_forest(path, feature_names=FEATURE_NAMES, window_s=WINDOW_S) -> NumpyFo
     if tuple(stored_names) != tuple(feature_names) or float(data["window_s"]) != float(window_s):
         raise ValueError(
             f"{path} was exported with different features or window size; retrain it "
-            "(`python -m training.train` for the wave model, "
-            "`python -m training.actions.train` for the action model)"
+            "(`python -m training.train_wave` or `python -m training.train_actions`)"
         )
     count = int(data["n_trees"])
     probabilities = [np.atleast_2d(data[f"proba_{i}"]) for i in range(count)]

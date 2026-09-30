@@ -2,7 +2,6 @@
 reachy_mini_env/
 __pycache__/
 *.pyc
-.pytest_cache/
 .DS_Store
 *.jpg
 

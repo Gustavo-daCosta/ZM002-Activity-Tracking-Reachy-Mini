@@ -1,6 +1,6 @@
 """Train the multiclass action classifier on public skeleton datasets, and say honestly what it can do.
 
-    reachy_mini_env/bin/python -m training.actions.train \
+    reachy_mini_env/bin/python -m training.train_actions \
         --ntu datasets/ntu60_hrnet.pkl --ucf datasets/ucf101_hrnet.pkl \
         --hmdb datasets/hmdb51_2d.pkl --max-clips-per-class 3 --crop-fraction 0.25
 
@@ -14,23 +14,20 @@ predictions with the window span (deliberately not a feature).
 """
 
 import argparse
-from pathlib import Path
 
 import numpy as np
+from sklearn.base import clone
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GroupKFold
 
-from core.motion.actions import ACTION_WINDOW_S, ACTIONS, NONE
-from core.motion.actions.features import (
-    ACTION_FEATURE_NAMES, action_features, action_features_vector,
-)
-from core.motion.actions.normalize import normalize_to_torso, trunk_height_parts
-from core.motion.forest import export_forest
-from training.actions.datasets import CROP_LEVELS, hmdb_windows, ntu_windows, ucf_windows
+from core.motion.actions import ACTIONS, DEFAULT_ACTION_MODEL
+from core.motion.features import ACTION_FEATURE_NAMES, action_features_vector
+from core.motion.forest import NONE, export_forest
+from core.motion.window import ACTION_WINDOW_S
+from training.data import CROP_LEVELS, hmdb_windows, ntu_windows, recorded_action_windows, ucf_windows
 
 FLOORS = [round(0.05 * step, 2) for step in range(1, 19)]
 N_ESTIMATORS = 300
-# core/models, not training/models: the exported model ships with core/ to the robot.
-MODELS_DIR = Path(__file__).resolve().parents[2] / "core" / "models"
-DEFAULT_OUT = MODELS_DIR / "action_classifier.npz"
 
 
 def to_arrays(windows):
@@ -120,8 +117,6 @@ def _fold_probabilities(model, X, y, train, test, classes):
     Columns are placed by name: `predict_proba` orders them by the classes present in the training half,
     which can be fewer than `classes`. Absent classes get an all-zero column.
     """
-    from sklearn.base import clone
-
     fitted = clone(model).fit(X[train], y[train])
     raw = fitted.predict_proba(X[test])
     probabilities = np.zeros((len(test), len(classes)), np.float64)
@@ -148,9 +143,6 @@ def train_grouped(windows, n_splits=5, seed=0, crop_fraction=1.0):
     Raises:
         ValueError: Fewer groups than folds, or `crop_fraction` outside [0, 1].
     """
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import GroupKFold
-
     X, y, groups = to_arrays(windows)
     spans = spans_of(windows)
     unique = len(set(groups.tolist()))
@@ -367,25 +359,6 @@ def format_report(result):
     return "\n".join(lines)
 
 
-def recorded_windows(data_dir=None):
-    """Our own robot-viewpoint recordings as action windows (waves and pauses only).
-
-    Tagged with the "recorded" crop regime and the "rec:" group namespace; used as an external test set.
-    """
-    from training.dataset import DATA_DIR, list_sessions, load_session, make_windows
-
-    out = []
-    for index, path in enumerate(list_sessions(DATA_DIR if data_dir is None else data_dir)):
-        session = load_session(path)
-        for features, label, _ in make_windows(
-            session, window_s=ACTION_WINDOW_S, features_of=action_features,
-            normalizer=normalize_to_torso, extra=trunk_height_parts,
-        ):
-            out.append((dict(features, crop="recorded"), "wave" if label == 1 else NONE,
-                        f"rec:session{index}"))
-    return out
-
-
 def main():
     """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__,
@@ -399,7 +372,7 @@ def main():
     parser.add_argument("--splits", type=int, default=5, help="GroupKFold folds")
     parser.add_argument("--crop-fraction", type=float, default=0.25,
                         help="share of the crop augmentation that reaches the training half (0..1)")
-    parser.add_argument("--out", default=str(DEFAULT_OUT), help="where to write the model")
+    parser.add_argument("--out", default=str(DEFAULT_ACTION_MODEL), help="where to write the model")
     args = parser.parse_args()
 
     print(f"Loading NTU windows from {args.ntu}...", flush=True)
@@ -409,7 +382,7 @@ def main():
     windows += ucf_windows(args.ucf, max_clips_per_class=args.max_clips_per_class)
     print(f"  {len(windows)} windows total", flush=True)
 
-    recorded = recorded_windows(args.data_dir)
+    recorded = recorded_action_windows(*([args.data_dir] if args.data_dir else []))
     hmdb = hmdb_windows(args.hmdb, max_clips_per_class=args.max_clips_per_class) if args.hmdb else []
     if args.hmdb:
         print(f"  {len(hmdb)} HMDB51 windows (external test set)", flush=True)

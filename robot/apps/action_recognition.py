@@ -16,6 +16,7 @@ F1 and what is honestly demonstrable: docs/action-recognition.md.
 Deployment: robot/deploy.sh (see docs/robot.md).
 """
 
+from core.motion.actions import DEFAULT_ACTION_MODEL, ActionDetector, ActionMonitor
 from robot.apps.common import make_parser, run
 
 
@@ -30,15 +31,12 @@ def parse_args(argv=None):
 def main():
     """Entry point."""
     args = parse_args()
-    from core.motion.actions.detector import DEFAULT_ACTION_MODEL, ActionDetector
-    from core.motion.actions.live import ActionMonitor
-
     # Fail before touching the robot when the model is missing; parsing the .npz once is deliberate.
     model_path = args.classifier or DEFAULT_ACTION_MODEL
     detector = ActionDetector(model_path)
     if not detector.available:
         raise SystemExit(f"No action model at {model_path}. Deploy it with robot/deploy.sh "
-                         "--code-only, or train it with `python -m training.actions.train`.")
+                         "--code-only, or train it with `python -m training.train_actions`.")
     print(f"Action model {model_path}")
     print("Place the robot so the camera sees the WHOLE person: squats and push-ups need the legs in frame.")
 

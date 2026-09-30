@@ -2,7 +2,7 @@
 
 import time
 from collections import defaultdict
-from typing import Callable, Dict
+from typing import Dict
 
 import numpy as np
 
@@ -10,16 +10,11 @@ import numpy as np
 class StageStats:
     """Accumulates per-stage milliseconds and frame counts, with a rolling one-second panel."""
 
-    def __init__(self, window_s: float = 1.0, clock: Callable[[], float] = time.perf_counter):
-        """Start counting.
-
-        Args:
-            window_s: Length of the rolling panel window.
-            clock: Time source, injectable for tests.
-        """
+    def __init__(self, window_s: float = 1.0):
+        """Start counting; `window_s` is the length of the rolling panel window."""
         self.window_s = window_s
-        self._clock = clock
-        self._start = clock()
+        self._clock = time.perf_counter
+        self._start = self._clock()
         self.frames = 0
         self.frames_with_target = 0
         self._samples = defaultdict(list)

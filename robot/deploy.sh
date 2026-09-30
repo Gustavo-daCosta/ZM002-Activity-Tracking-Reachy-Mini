@@ -51,7 +51,7 @@ COPYFILE_DISABLE=1 tar czf - -C "$REPO" \
   core robot requirements/robot.txt \
   | ssh "$HOST" "tar xzf - -C $REMOTE"
 # Only the models the robot needs: int8 MoveNet and the numpy forests (the other pose models stay on the Mac).
-COPYFILE_DISABLE=1 tar czf - -C "$REPO/core/models" movenet-lightning-int8.tflite wave_classifier.npz wave_classifier_ntu.npz action_classifier.npz \
+COPYFILE_DISABLE=1 tar czf - -C "$REPO/core/models" movenet-lightning-int8.tflite wave_classifier_ntu.npz action_classifier.npz \
   | ssh "$HOST" "tar xzf - -C $REMOTE/core/models"
 ssh "$HOST" "ls -la $REMOTE $REMOTE/core/models | head -30"
 
@@ -94,8 +94,8 @@ ssh "$HOST" "cd $REMOTE && $VENV/bin/python -c '
 import cv2, numpy, onnxruntime
 import reachy_mini
 from core.pose_backends import create_backend
-from core.motion.detectors import ClassifierWaveDetector
-from core.motion.actions.detector import ActionDetector
+from core.motion.wave import ClassifierWaveDetector
+from core.motion.actions import ActionDetector
 print(\"cv2\", cv2.__version__, \"onnxruntime\", onnxruntime.__version__, \"numpy\", numpy.__version__)
 print(\"reachy_mini\", reachy_mini.__version__ if hasattr(reachy_mini, \"__version__\") else \"?\")
 print(\"classifier available:\", ClassifierWaveDetector().available)
