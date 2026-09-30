@@ -255,3 +255,25 @@ the usual cause: plug the power cable before debugging the network.
 | "No camera frames" | `curl -s http://<host>:8000/api/media/status`: `released: true` means another client took the camera |
 | daemon error in status | `journalctl -u reachy-mini-daemon -n 200 --no-pager \| grep -iE "error|traceback"` |
 | blurry picture | hardware: the dw9807 focus motor fails over I2C on this unit; do not chase it in software |
+
+## 9. Documentation for AI coding agents
+
+The repository is also set up for AI agents (Claude Code and similar) to work on the robot and the
+simulation safely, with the same rules a person would follow:
+
+- [`AGENTS.md`](AGENTS.md) (read by Claude Code through [`CLAUDE.md`](CLAUDE.md)): the operating manual.
+  Robot host and credentials, the mandatory preflight, what an agent may do on its own (wake up, move,
+  read logs) and what needs a person's confirmation (daemon restart, reboot, app installs, Wi-Fi, pip on
+  the robot), the known pitfalls, the project layout and what is honestly demonstrable.
+- [`.claude/skills/reachy-api/`](.claude/skills/reachy-api): every REST endpoint of the daemon with
+  parameters, schemas and live example responses, generated from the robot's own `openapi.json` by
+  [`tools/gen_api_reference.py`](tools/gen_api_reference.py); flags the endpoints that need confirmation.
+- [`.claude/skills/reachy-sdk/`](.claude/skills/reachy-sdk): the Python SDK, from connection modes and
+  motion calls to emotions, recording, media, tracking, apps, the MuJoCo simulation and hardware limits.
+- [`.claude/skills/reachy-ssh/`](.claude/skills/reachy-ssh): shell access, a map of the robot's OS
+  (services, venvs, devices), safe read-only commands, the actions that require confirmation, and
+  troubleshooting playbooks.
+
+For the simulation, [`docs/simulation.md`](docs/simulation.md) covers `sim/start.sh`, the webcam and the
+MuJoCo daemon; an agent can develop and test there with no robot at all, then move to the robot through
+the preflight described in section 8.
