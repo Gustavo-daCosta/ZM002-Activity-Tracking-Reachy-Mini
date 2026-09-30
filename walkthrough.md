@@ -19,7 +19,7 @@ flowchart LR
 | Directory | Runs where | Contents |
 |---|---|---|
 | [`core/`](core) | Mac **and** robot | pose backends, `core/motion/`, vision, tracking, tracked `.npz` models |
-| [`robot/`](robot) | the physical robot | connection, preflight, apps, deployment |
+| [`robot/`](robot) | the physical robot | connection, preflight, apps, deployment (SSH command guide: section 8) |
 | [`sim/`](sim) | Mac only | MuJoCo simulation driven by the webcam |
 | [`training/`](training) | Mac only, needs scikit-learn | recording, dataset loaders, the two trainers |
 
@@ -143,3 +143,115 @@ version coupling).
 No unit tests, by decision. Replay the recorded sessions in
 [`training/data/wave/`](training/data/wave) through the monitors and compare, run
 [`sim/body_tracking.py`](sim/body_tracking.py) on the webcam, or run the app on the robot.
+
+## 8. Working on the robot over SSH: command guide
+
+The robot is a Raspberry Pi running ReachyMiniOS. Everything below runs from this Mac; `reachy` is the
+alias in `~/.ssh/config` (user `pollen`, key `~/.ssh/reachy_mini`), set up once with
+[`tools/reachy_ssh_setup.sh`](tools/reachy_ssh_setup.sh). Fallback without the alias:
+`ssh pollen@192.168.137.171` (password `root`). The IP is DHCP and may move; `reachy-mini.local` also works.
+
+### Connect and check
+
+```bash
+ssh reachy 'cat ~/VERSION.txt; uptime; df -h /; free -h'      # OS version, load, disk, RAM
+ssh reachy 'systemctl is-active reachy-mini-daemon'            # the daemon that owns motors and camera
+ssh reachy 'journalctl -u reachy-mini-daemon -n 100 --no-pager' # its logs (timestamps are not NTP-synced)
+curl -s http://192.168.137.171:8000/api/daemon/status          # same daemon over REST, Swagger at /docs
+```
+
+Always give `journalctl` a limit (`-n`, `--since`); never leave `-f` running over SSH.
+
+### Deploy the code
+
+[`robot/deploy.sh`](robot/deploy.sh) does the whole setup over SSH: it creates the venv `~/wave_env`
+(Python 3.12, never touching the daemon's `/venvs/*`), copies `core/` and `robot/` to `~/wave_app`,
+ships the models the robot needs (`movenet-lightning-int8.tflite`, `wave_classifier_ntu.npz`,
+`action_classifier.npz`) and runs an import smoke test.
+
+```bash
+robot/deploy.sh                # first time: venv + pip install + code (robot needs internet)
+robot/deploy.sh --code-only    # after a code or model change: re-sync only, seconds
+robot/deploy.sh --fetch-wheels && robot/deploy.sh --offline   # robot without internet
+```
+
+What lands on the robot:
+
+| Path on the robot | Content |
+|---|---|
+| `~/wave_app/core`, `~/wave_app/robot` | this repo's `core/` and `robot/` |
+| `~/wave_app/core/models/` | the int8 MoveNet and the two `.npz` forests |
+| `~/wave_env/` | our venv: LiteRT, onnxruntime, opencv-headless, numpy, `reachy_mini` |
+
+### Preflight, then run
+
+The daemon boots with `--no-wake-up-on-start`, so the robot is asleep with motors off after every boot.
+Run the preflight from the Mac before anything that moves it or uses the camera; `--fix` enables the
+motors, wakes it up and re-acquires the camera:
+
+```bash
+reachy_mini_env/bin/python robot/preflight.py --fix --need media
+```
+
+Then run a recognizer **on the robot**, in `~/wave_app` with `~/wave_env`:
+
+```bash
+# wave recognition, antennas wave back, stop after 60 s (or Ctrl+C)
+ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.wave_antennas --seconds 60'
+
+# six-class action recognition; the camera must see the whole person
+ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.action_recognition --seconds 60'
+
+# useful options (both apps)
+#   --stream-port 8080   annotated camera view at http://<robot>:8080/ from any browser
+#   --follow             head and body follow the person
+#   --no-sleep           leave the robot awake on exit
+#   --model movenet-lightning   fp32 ONNX instead of int8 TFLite (slower, for comparison)
+```
+
+Use `ssh -tt` when you want Ctrl+C in your terminal to reach the remote process as SIGINT; the app also
+handles SIGHUP (dropped connection) by parking the robot and going to sleep.
+[`robot/demo.sh`](robot/demo.sh) chains all of the above: ping, `deploy.sh --code-only`, preflight, and
+the wave app with the stream on port 8080.
+
+The same apps can run **from the Mac** instead, with frames arriving over WebRTC and a preview window;
+it is slower but convenient for debugging:
+
+```bash
+reachy_mini_env/bin/python -m robot.apps.action_recognition --host 192.168.137.171 --window
+```
+
+### Small SDK scripts
+
+The simpler apps use [`robot/connect.py`](robot/connect.py), which runs the preflight and opens the SDK
+connection for you:
+
+```bash
+reachy_mini_env/bin/python -m robot.apps.antennas             # wiggle the antennas
+reachy_mini_env/bin/python -m robot.apps.explore              # tour of the SDK: head, body, emotions
+reachy_mini_env/bin/python -m robot.apps.head_tracking        # daemon-side face tracking, printed
+reachy_mini_env/bin/python -m robot.apps.look_at_click        # click on the camera window, robot looks there
+```
+
+### Things that need a decision first
+
+These change the robot's state or files and are never run automatically:
+
+```bash
+ssh reachy 'sudo systemctl restart reachy-mini-daemon'   # robot goes limp for ~30 s, then boots asleep
+ssh reachy 'sudo reboot'                                 # unreachable for ~1 min
+ssh reachy '~/wave_env/bin/pip install ...'              # any package change on the robot
+```
+
+After a restart or reboot, run the preflight again. If the robot stops answering mid-task, the battery is
+the usual cause: plug the power cable before debugging the network.
+
+### When it does not work
+
+| Symptom | First check |
+|---|---|
+| `ssh` hangs, preflight exit 2 | same Wi-Fi (`Reachy Mini`)? `ping reachy-mini.local`; IP changed? battery? |
+| preflight ✖ asleep / motors off | expected after boot; `--fix` handles it |
+| "No camera frames" | `curl -s http://<host>:8000/api/media/status`: `released: true` means another client took the camera |
+| daemon error in status | `journalctl -u reachy-mini-daemon -n 200 --no-pager \| grep -iE "error|traceback"` |
+| blurry picture | hardware: the dw9807 focus motor fails over I2C on this unit; do not chase it in software |
