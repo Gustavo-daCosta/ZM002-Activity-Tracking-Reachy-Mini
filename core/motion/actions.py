@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.motion.antennas import NEUTRAL_ANTENNAS, AntennaWave, antennas_with_neutral
+from core.motion.voice import ActionVoice
 from core.motion.features import ACTION_FEATURE_NAMES, action_features, action_features_vector
 from core.motion.forest import MODELS_DIR, NONE, load_forest
 from core.motion.window import ACTION_WINDOW_S, KeypointWindow, normalize_to_torso, trunk_height_parts
@@ -69,7 +70,7 @@ class ActionDetector:
 
 
 class ActionMonitor:
-    """Holds the window, the detector and one `AntennaWave` per action.
+    """Holds the window, the detector, one `AntennaWave` per action, and the voice announcer.
 
     Attributes:
         window: The keypoint window; set `window.aspect_ratio` from the real frame.
@@ -78,9 +79,12 @@ class ActionMonitor:
         detection: Latest `ActionDetection`.
         counts: Occurrences recognized per action.
         reactions: `AntennaWave` per action.
+        voice: `ActionVoice` that speaks the action name when the antennas react.
+            Is a no-op when spd-say is not installed; None to disable entirely.
     """
 
-    def __init__(self, aspect_ratio, min_score=0.5, model_path=DEFAULT_ACTION_MODEL, detector=None):
+    def __init__(self, aspect_ratio, min_score=0.5, model_path=DEFAULT_ACTION_MODEL, detector=None,
+                 voice=True):
         """Build the monitor.
 
         Args:
@@ -89,6 +93,8 @@ class ActionMonitor:
             min_score: Keypoint confidence threshold.
             model_path: Action model `.npz`, used when `detector` is None.
             detector: An already-built `ActionDetector` (parsing the 5 MB `.npz` twice is slow on the CM4).
+            voice: True (default) to create an `ActionVoice` with default settings, an `ActionVoice`
+                instance to customise rate/language/labels, or None/False to disable voice entirely.
 
         Raises:
             ValueError: No model available.
@@ -106,6 +112,12 @@ class ActionMonitor:
         self.reactions = {action: AntennaWave(amplitude, hz, cycles / hz)
                           for action, (amplitude, hz, cycles) in REACTIONS.items()}
         self._answered_at = {action: None for action in ACTIONS}
+        if voice is True:
+            self.voice: ActionVoice | None = ActionVoice()
+        elif voice is False or voice is None:
+            self.voice = None
+        else:
+            self.voice = voice  # caller passed a pre-built ActionVoice
 
     def note(self, action, now):
         """Record a detected action; returns True when the antennas answered it.
@@ -124,7 +136,10 @@ class ActionMonitor:
         self._answered_at[action] = now
         if self._active_reaction(now) is not None:
             return False
-        return self.reactions[action].trigger(now)
+        triggered = self.reactions[action].trigger(now)
+        if triggered and self.voice is not None:
+            self.voice.trigger(action, now)
+        return triggered
 
     def update(self, now, keypoints):
         """Add a frame and re-detect. Returns the milliseconds the motion stage took."""
