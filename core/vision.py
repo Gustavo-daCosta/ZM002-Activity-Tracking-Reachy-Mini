@@ -122,15 +122,42 @@ def put_text(frame, text, row, color=(255, 255, 255)):
 
 
 class RobotCameraSource:
-    """Frames from the robot camera through the SDK (BGR 1280x720), copied because SDK frames are read-only."""
+    """Direct V4L2/OpenCV access to the Reachy Mini camera, bypassing the 10 FPS SDK media feed."""
 
-    def __init__(self, mini):
-        self._mini = mini
+    def __init__(self, device="/dev/video0", width=1920, height=1080, fps=60):
+        self.device = device
+        self.cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+
+        if not self.cap.isOpened():
+            raise RuntimeError(
+                f"Could not open Reachy Mini camera at {device}. "
+                "Run `v4l2-ctl --list-devices` to find the correct device."
+            )
+
+        # The Reachy Mini UVC camera exposes high-FPS modes through MJPEG/V4L2.
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self.cap.set(cv2.CAP_PROP_FPS, fps)
+
+        actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        print(
+            f"Direct camera: {device} {actual_width}x{actual_height} "
+            f"@ {actual_fps:.1f} FPS"
+        )
 
     def read(self):
-        """The latest frame as a writable copy, or None when no frame is available."""
-        frame = self._mini.media.get_frame()
-        return None if frame is None else frame.copy()
+        """Read the next frame directly from the physical camera."""
+        ret, frame = self.cap.read()
+        return frame if ret else None
+
+    def close(self):
+        """Release the physical camera."""
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
 
 
 def downscale(frame, width):
