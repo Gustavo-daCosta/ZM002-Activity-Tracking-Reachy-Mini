@@ -28,3 +28,11 @@ datasets/*.pkl
 # Design specs, implementation plans and the agent workspace stay local to the machine they were made on.
 docs/superpowers/
 .superpowers/
+
+# --- data collection kit -----------------------------------------------------------------------------
+# collect/ is sent to volunteers as a zip. Their recordings and the zips they send back are data, not code;
+# movenet-lightning.onnx stays tracked because the kit runs offline and does not download it.
+collect.zip
+collect/*.zip
+collect/recordings/
+collect/.venv/

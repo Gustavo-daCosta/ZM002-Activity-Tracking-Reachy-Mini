@@ -1,0 +1,5 @@
+# Floors, not pins: the kit must install on Windows, Linux and macOS (Intel and Apple Silicon) with
+# Python 3.10+. onnxruntime dropped Intel-Mac wheels after 1.23.2; pip picks the newest that fits.
+numpy>=1.24
+opencv-python>=4.8
+onnxruntime>=1.18
