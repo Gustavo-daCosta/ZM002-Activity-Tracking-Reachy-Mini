@@ -8,8 +8,8 @@ import cv2
 
 MODELS_DIR = Path(__file__).parent / "models"
 # Cameras are selected by name: on macOS the OpenCV indices change when the iPhone (Continuity Camera)
-# connects, but "FaceTime" always matches the built-in camera.
-DEFAULT_CAMERA = "FaceTime"
+# connects, but "FaceTime" always matches the built-in camera. On Linux, fall back to "auto" or first available.
+DEFAULT_CAMERA = "FaceTime" if sys.platform == "darwin" else "auto"
 
 
 def add_camera_argument(parser):
@@ -39,17 +39,43 @@ def resolve_camera(spec: str, cameras=None) -> int:
         The OpenCV index.
 
     Raises:
-        ValueError: No camera matches, or several do.
+        ValueError: No camera matches.
     """
     if spec.isdigit():
         return int(spec)
     cameras = list_cameras() if cameras is None else cameras
+
+    if spec.lower() in ("auto", "default"):
+        for index, _ in cameras:
+            test_cap = cv2.VideoCapture(index)
+            if test_cap.isOpened():
+                test_cap.release()
+                return index
+        return 0
+
     available = ", ".join(f"{index}: {name}" for index, name in cameras) or "none"
     matches = [(index, name) for index, name in cameras if spec.lower() in name.lower()]
+
     if not matches:
-        raise ValueError(f"No camera matching {spec!r}. Available: {available}")
+        # If requested camera (e.g. FaceTime) is not found, fallback to first working camera
+        if cameras:
+            for index, _ in cameras:
+                test_cap = cv2.VideoCapture(index)
+                if test_cap.isOpened():
+                    test_cap.release()
+                    return index
+            return cameras[0][0]
+        return 0
+
     if len(matches) > 1:
-        raise ValueError(f"Camera name {spec!r} is ambiguous: {matches}. Available: {available}")
+        # If multiple camera nodes share the same name (e.g. video0/video1 on Linux), pick the one that opens
+        for index, _ in matches:
+            test_cap = cv2.VideoCapture(index)
+            if test_cap.isOpened():
+                test_cap.release()
+                return index
+        return matches[0][0]
+
     return matches[0][0]
 
 
