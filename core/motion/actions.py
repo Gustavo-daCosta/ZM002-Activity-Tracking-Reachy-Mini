@@ -120,12 +120,22 @@ class ActionMonitor:
         self.reactions = {action: AntennaWave(amplitude, hz, cycles / hz)
                           for action, (amplitude, hz, cycles) in REACTIONS.items()}
         self._answered_at = {action: None for action in self.detector.classes}
+        self.target_action = None
+        self.target_reps = 0
+        self.on_target_rep = None
         if voice is True:
             self.voice: ActionVoice | None = ActionVoice()
         elif voice is False or voice is None:
             self.voice = None
         else:
             self.voice = voice  # caller passed a pre-built ActionVoice
+
+    def set_target_action(self, action: str | None, callback=None):
+        """Set an active target action to filter for (None accepts all actions)."""
+        self.target_action = action
+        self.target_reps = 0
+        if callback is not None:
+            self.on_target_rep = callback
 
     def note(self, action, now):
         """Record a detected action; returns True when the antennas answered it.
@@ -136,12 +146,18 @@ class ActionMonitor:
         """
         if action == NONE:
             return False
+        if self.target_action is not None and action != self.target_action:
+            return False
         oldest = self.window.frames()[0]
         answered = self._answered_at[action]
         if not (answered is None or (len(oldest) > 0 and oldest[0] > answered)):
             return False
         self.counts[action] += 1
         self._answered_at[action] = now
+        if self.target_action is not None:
+            self.target_reps += 1
+            if self.on_target_rep is not None:
+                self.on_target_rep(action, self.target_reps, now)
         if self._active_reaction(now) is not None:
             return False
         triggered = self.reactions[action].trigger(now)
@@ -174,6 +190,8 @@ class ActionMonitor:
             yield ("actions: no window yet", GREY)
             return
         yield (f"{self.detection.action} {self.detection.score:.2f}", GREEN if self.detection.is_action else GREY)
+        if self.target_action is not None:
+            yield (f"  TARGET: {self.target_action} (reps: {self.target_reps})", CYAN)
         top = sorted(self.detection.probabilities.items(), key=lambda item: -item[1])[:3]
         yield ("  " + "  ".join(f"{name} {p:.2f}" for name, p in top), GREY)
         counted = " ".join(f"{action}:{count}" for action, count in self.counts.items() if count)

@@ -1,0 +1,128 @@
+"""Session plan configuration, exercise definitions, and dynamic singular/plural phrasing."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Sequence
+
+DEFAULT_REPS_PER_ROUND: int = 1
+DEFAULT_TIMEOUT_S: float = 30.0
+
+# Supported demonstrable exercises in the repository
+SUPPORTED_EXERCISES: tuple[str, ...] = ("squat", "clapping", "jumping_jacks", "wave")
+
+EXERCISE_NOUNS: dict[str, tuple[str, str]] = {
+    # action_key: (singular, plural)
+    "squat":         ("squat", "squats"),
+    "clapping":      ("clap", "claps"),
+    "jumping_jacks": ("jumping jack", "jumping jacks"),
+    "wave":          ("wave", "waves"),
+    "pushup":        ("push-up", "push-ups"),
+}
+
+
+def get_nouns(action: str) -> tuple[str, str]:
+    """Return (singular, plural) nouns for an action name."""
+    return EXERCISE_NOUNS.get(action, (action, f"{action}s"))
+
+
+def format_exercise_name(action: str, count: int) -> str:
+    """Format action name matching the given count (singular vs plural)."""
+    sing, plur = get_nouns(action)
+    noun = sing if count == 1 else plur
+    return f"{count} {noun}"
+
+
+def get_welcome_speech(num_rounds: int, reps_per_round: int) -> str:
+    """Generate friendly welcome speech with grammatical singular/plural agreement."""
+    round_phrase = "1 round" if num_rounds == 1 else f"{num_rounds} rounds"
+    if reps_per_round == 1:
+        rep_phrase = "1 repetition each" if num_rounds > 1 else "1 repetition"
+    else:
+        rep_phrase = f"{reps_per_round} repetitions each" if num_rounds > 1 else f"{reps_per_round} repetitions"
+
+    return f"Welcome to your workout session! We will do {round_phrase} with {rep_phrase}. Let's begin!"
+
+
+def get_round_intro_speech(round_idx: int, total_rounds: int, action: str, target_reps: int) -> str:
+    """Generate round introduction speech with singular/plural agreement."""
+    target_phrase = format_exercise_name(action, target_reps)
+    if total_rounds > 1:
+        return f"Round {round_idx} of {total_rounds}: please do {target_phrase}!"
+    return f"Please do {target_phrase}!"
+
+
+def get_rep_speech(rep_num: int, target_reps: int) -> str:
+    """Generate real-time repetition counting feedback."""
+    number_words = {
+        1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five",
+        6: "Six", 7: "Seven", 8: "Eight", 9: "Nine", 10: "Ten",
+    }
+    word = number_words.get(rep_num, str(rep_num))
+
+    if target_reps == 1:
+        return f"{word}! Repetition complete."
+    elif rep_num >= target_reps:
+        return f"{word}! Target reached."
+    else:
+        return f"{word}!"
+
+
+def get_round_complete_speech(action: str, reps_done: int, timed_out: bool = False) -> str:
+    """Generate round feedback upon completion or timeout."""
+    if timed_out and reps_done == 0:
+        return "Time is up for this round. Don't worry, let's keep moving!"
+
+    done_phrase = format_exercise_name(action, reps_done)
+    if timed_out:
+        return f"Time is up! You completed {done_phrase}. Good effort!"
+    return f"Great job! You finished {done_phrase}."
+
+
+def get_outro_speech(total_reps: int, completed_rounds: int, total_rounds: int) -> str:
+    """Generate celebratory session outro speech with singular/plural agreement."""
+    rep_word = "repetition" if total_reps == 1 else "repetitions"
+    round_word = "round" if completed_rounds == 1 else "rounds"
+    return (
+        f"Workout complete! Fantastic work, you completed {total_reps} total {rep_word} "
+        f"across {completed_rounds} {round_word}. See you next time!"
+    )
+
+
+@dataclass
+class ExerciseRound:
+    """Configuration for a single exercise round."""
+
+    action: str
+    target_reps: int = DEFAULT_REPS_PER_ROUND
+    timeout_s: float = DEFAULT_TIMEOUT_S
+
+    @property
+    def singular_name(self) -> str:
+        return get_nouns(self.action)[0]
+
+    @property
+    def plural_name(self) -> str:
+        return get_nouns(self.action)[1]
+
+
+@dataclass
+class SessionPlan:
+    """Complete exercise session workout plan."""
+
+    rounds: list[ExerciseRound] = field(default_factory=list)
+    reps_per_round: int = DEFAULT_REPS_PER_ROUND
+
+    @classmethod
+    def create(
+        cls,
+        exercises: Sequence[str] = SUPPORTED_EXERCISES,
+        reps_per_round: int = DEFAULT_REPS_PER_ROUND,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+    ) -> SessionPlan:
+        """Create a session plan with `reps_per_round` repetitions for each exercise."""
+        rounds = [
+            ExerciseRound(action=ex, target_reps=reps_per_round, timeout_s=timeout_s)
+            for ex in exercises
+        ]
+        return cls(rounds=rounds, reps_per_round=reps_per_round)
