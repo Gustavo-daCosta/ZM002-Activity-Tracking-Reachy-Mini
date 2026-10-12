@@ -45,10 +45,8 @@ The robot finds a person, follows them with its head and body, and recognizes wh
 answering each recognized action with a distinct antenna gesture. Six classes are trained — none, wave,
 push-up, squat, clapping, jumping jacks — over 3-second windows of skeleton keypoints.
 
-In the default robot-local configuration, everything runs on the robot's CPU: pose estimation via MoveNet
-int8 and a random forest exported to plain numpy, so scikit-learn is not needed on the Raspberry Pi. An
-optional remote-session mode runs only MoveNet on a CUDA-enabled laptop and sends keypoints back to the
-Reachy; the robot continues to run the workout session, action classifier, speech and gestures locally.
+Everything runs on CPU, on the robot itself: pose estimation via MoveNet int8, and a random forest exported
+to plain numpy so it needs no scikit-learn on the Raspberry Pi.
 
 **On what is and is not demonstrable, this repository tries to be blunt rather than flattering**, because a
 scoring system that is trusted when it should not be is worse than none. Waving, clapping and jumping jacks
@@ -58,58 +56,6 @@ performance for some classes — the honest figure for waving is 0.581, not the 
 
 Measurements, caveats and the reasoning behind each number:
 [docs/action-recognition.md](docs/action-recognition.md).
-
-### Remote exercise-session test (MoveNet on laptop, session on Reachy)
-
-The guided workout session can also be tested with the Reachy camera streaming a low-resolution MJPEG
-feed to the laptop. Only MoveNet pose inference runs on the laptop GPU. The laptop posts COCO-17
-keypoints to the robot over HTTP; the robot runs `ActionMonitor` and `SessionEngine`, counts repetitions,
-plays speech, and performs the session gestures. This is distinct from the standard `action_recognition`
-remote-control mode, which sends antenna/head targets rather than keypoints.
-
-Start the server on the Reachy Mini (the action-classifier file must exist at
-`core/models/action_classifier.npz` in this checkout):
-
-```bash
-cd ~/reachy-source
-source ~/camera_env/bin/activate
-python -m robot.remote_camera_server \
-  --host localhost \
-  --width 192 --height 108 \
-  --session --follow \
-  --rounds wave \
-  --reps-per-round 1 \
-  --timeout 30
-```
-
-Then, on the Ubuntu laptop, from this repository's root and its GPU-enabled virtual environment:
-
-```bash
-cd ~/ZM002-Activity-Tracking-Reachy-Mini
-source reachy_mini_env/bin/activate
-python -m robot.apps.remote_session_inference \
-  --model movenet-lightning \
-  --remote-camera http://10.42.0.66:8765/stream.mjpg \
-  --result-url http://10.42.0.66:8766/result \
-  --width 192 --window
-```
-
-The workout starts when the robot receives a valid person pose. `--rounds wave` is a deliberately short
-smoke test; after it works, replace it with `--rounds squat,clapping,jumping_jacks,wave` to test all
-configured rounds. Check connectivity and session state at `http://10.42.0.66:8766/status` or with
-`curl http://10.42.0.66:8766/health`. Stop the laptop client first with Ctrl+C, then stop the server.
-
-**Head/body tracking is enabled by default during active exercise rounds.** The robot uses the
-laptop's COCO keypoints and the existing `CenteringFollower` controller to keep the torso near the
-centre of the frame, moving the head and (when needed) rotating the body. Tracking pauses during the
-session's spoken introductions, celebration gestures and outro, so it does not fight those movements.
-`/status` reports `head_following` and the current head/body tracking angles. Add `--no-follow` to the
-server command to disable it. The controller can be tuned with `--follow-gain`, `--deadzone`,
-`--max-yaw`, `--max-pitch`, `--max-head-offset`, `--body-gain` and `--max-body-yaw`.
-
-The camera sends 192x108 frames to preserve the 16:9 image ratio while matching MoveNet's 192-pixel
-input width; the model's existing letterbox step pads the image to 192x192. This avoids sending 1280x720
-frames only to downscale them on the laptop.
 
 ### Relevance to CMAS
 
