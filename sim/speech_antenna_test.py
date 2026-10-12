@@ -27,12 +27,10 @@ The script falls back to printing the text if spd-say is not available.
 from __future__ import annotations
 
 import argparse
-import shutil
-import subprocess
 import time
-import threading
 from dataclasses import dataclass
-from typing import Callable
+
+from core.motion.voice import ActionVoice, DEFAULT_VOICE
 
 # ---------------------------------------------------------------------------
 # Beat + Action dataclasses
@@ -177,46 +175,24 @@ ACTIONS: list[Action] = [
 
 
 # ---------------------------------------------------------------------------
-# TTS helpers
-# ---------------------------------------------------------------------------
-
-def _find_tts() -> Callable[[str, int, str], None] | None:
-    """Return a callable(text, rate, language) -> None, or None if unavailable."""
-    if shutil.which("spd-say"):
-        def _spd(text: str, rate: int, language: str) -> None:
-            subprocess.run(
-                ["spd-say", "--rate", str(rate), "--language", language, "--", text],
-                check=False,
-            )
-        return _spd
-    return None
-
-
-def _speak(tts: Callable | None, text: str, rate: int, language: str) -> None:
-    """Speak *text* via TTS (blocking) or fall back to printing."""
-    if tts is not None:
-        tts(text, rate, language)
-    else:
-        print(f"  [TTS unavailable] {text}")
-
-
-def _announce_and_move(mini, tts, action: Action, rate: int, language: str) -> None:
+def _announce_and_move(mini, voice: ActionVoice, action: Action) -> None:
     """Speak the action label while running the antenna choreography in parallel.
 
-    The TTS runs in a background thread so the antenna beats execute
+    The TTS runs asynchronously via ActionVoice so the antenna beats execute
     concurrently in the main thread.
     """
     print(f'  → "{action.label}"')
 
-    tts_thread = threading.Thread(
-        target=_speak, args=(tts, action.label, rate, language), daemon=True
-    )
-    tts_thread.start()
+    if voice.available:
+        voice.speak(action.label, non_blocking=True)
+    else:
+        print(f"  [TTS unavailable] {action.label}")
 
     for beat in action.beats:
         mini.goto_target(antennas=beat.antennas, duration=beat.duration)
 
-    tts_thread.join(timeout=12.0)
+    if voice.available:
+        voice.wait(timeout=12.0)
     time.sleep(action.pause_after)
 
 
@@ -231,6 +207,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--host", default="localhost",
                         help="daemon host (default: localhost)")
+    parser.add_argument("--voice-model", default=DEFAULT_VOICE,
+                        help=f"Piper voice model (default: {DEFAULT_VOICE})")
+    parser.add_argument("--backend", default="auto", choices=["auto", "piper", "spd-say"],
+                        help="TTS backend (default: auto)")
+    parser.add_argument("--speed", type=float, default=1.0,
+                        help="Piper speech speed factor (1.0 = normal, 0.9 = faster, 1.1 = slower)")
     parser.add_argument("--rate", type=int, default=-25,
                         help="spd-say speech rate -100..+100 (default: -25, slightly slower)")
     parser.add_argument("--language", default="en",
@@ -251,11 +233,17 @@ def main() -> None:
             print(f"  {i}.  {a.label:<35} {a.total_duration():.1f}s")
         return
 
-    tts = _find_tts()
-    if tts is None:
-        print("WARNING: spd-say not found — text will be printed, not spoken.")
-        print("         sudo apt install speech-dispatcher")
-        print()
+    voice = ActionVoice(
+        voice_model=args.voice_model,
+        backend=args.backend,
+        length_scale=args.speed,
+        rate=args.rate,
+        language=args.language,
+    )
+    if not voice.available:
+        print("WARNING: TTS not available — text will be printed, not spoken.")
+    else:
+        print(f"TTS ready: backend={voice.backend}, model={voice.voice_model_name}")
 
     from reachy_mini import ReachyMini
     from reachy_mini.utils import create_head_pose
@@ -287,7 +275,7 @@ def main() -> None:
         try:
             for i, action in enumerate(ACTIONS, 1):
                 print(f"[{i}/{len(ACTIONS)}]", end=" ")
-                _announce_and_move(mini, tts, action, args.rate, args.language)
+                _announce_and_move(mini, voice, action)
         except KeyboardInterrupt:
             print("\nInterrupted.")
         finally:
