@@ -195,10 +195,14 @@ def main() -> None:
     engine = None
 
     try:
-        # Initialize all expensive components BEFORE opening the Reachy SDK
-        # websocket. Model download, camera setup and warm-up can take long
-        # enough that a newly opened idle robot connection may be dropped.
-        print("Loading MoveNet Lightning INT8 with LiteRT/TFLite on the robot...", flush=True)
+        # Load expensive model/classifier/audio assets before opening the SDK
+        # connection. The SDK connection itself must be active before opening
+        # Picamera2: media_backend="no_media" asks the daemon to release the
+        # camera and audio hardware so this process can capture directly.
+        print(
+            "Loading MoveNet Lightning INT8 with LiteRT/TFLite on the robot...",
+            flush=True,
+        )
         backend = create_backend("movenet-tflite")
 
         detector = ActionDetector(activity_model)
@@ -214,44 +218,48 @@ def main() -> None:
                 f"{', '.join(missing)}. Available classes: {', '.join(detector.classes)}"
             )
 
-        # Use the same source resolution as the remote laptop-streaming setup.
-        source = Picamera2Source(
-            width=args.camera_width,
-            height=args.camera_height,
-        )
-        first_frame = wait_for_frames(source)
-        if first_frame is None:
-            raise SystemExit("No frames received from Picamera2")
-
-        frame = downscale(first_frame, args.width)
-        aspect_ratio = frame.shape[1] / frame.shape[0]
-        min_score = backend.default_min_score
-        print(
-            f"Direct camera: {frame.shape[1]}x{frame.shape[0]} "
-            f"(configured {args.camera_width}x{args.camera_height})",
-            flush=True,
-        )
-        print(
-            f"Warming up MoveNet ({args.warmup} runs; excluded from FPS)...",
-            flush=True,
-        )
-        for _ in range(args.warmup):
-            backend.infer(frame)
-
-        monitor = ActionMonitor(
-            aspect_ratio=aspect_ratio,
-            min_score=min_score,
-            detector=detector,
-            voice=False,
-        )
-        # Piper/model initialization can also take time, so do it before connecting.
         voice = ActionVoice(voice_model=args.voice_model)
-
         from reachy_mini.utils import create_head_pose
 
-        print("Camera/model ready; connecting to Reachy Mini now...", flush=True)
+        print(
+            "Connecting to Reachy Mini (requesting daemon to release camera for direct FPS test)...",
+            flush=True,
+        )
         with connect("localhost") as mini:
             try:
+                # The connect() helper uses media_backend="no_media". Wait briefly
+                # for the daemon to release libcamera before creating Picamera2.
+                time.sleep(0.75)
+                source = Picamera2Source(
+                    width=args.camera_width,
+                    height=args.camera_height,
+                )
+                first_frame = wait_for_frames(source)
+                if first_frame is None:
+                    raise SystemExit("No frames received from Picamera2")
+
+                frame = downscale(first_frame, args.width)
+                aspect_ratio = frame.shape[1] / frame.shape[0]
+                min_score = backend.default_min_score
+                print(
+                    f"Direct camera: {frame.shape[1]}x{frame.shape[0]} "
+                    f"(configured {args.camera_width}x{args.camera_height})",
+                    flush=True,
+                )
+                print(
+                    f"Warming up MoveNet ({args.warmup} runs; excluded from FPS)...",
+                    flush=True,
+                )
+                for _ in range(args.warmup):
+                    backend.infer(frame)
+
+                monitor = ActionMonitor(
+                    aspect_ratio=aspect_ratio,
+                    min_score=min_score,
+                    detector=detector,
+                    voice=False,
+                )
+
                 mini.goto_target(
                     head=create_head_pose(),
                     antennas=list(NEUTRAL_ANTENNAS),
@@ -309,8 +317,8 @@ def main() -> None:
                         (now - infer_start) * 1000.0,
                     )
 
-                    # Update the session on every captured frame, including frames
-                    # where no keypoints are detected, so timeouts still advance.
+                    # Update the session on every captured frame, even if no
+                    # keypoints are found, so exercise timeouts still advance.
                     session_start = time.perf_counter()
                     engine.update(now, result.keypoints)
                     session_elapsed_ms = (time.perf_counter() - session_start) * 1000.0
@@ -347,7 +355,8 @@ def main() -> None:
             except KeyboardInterrupt:
                 print("\nInterrupted by user; calculating FPS summary...", flush=True)
             finally:
-                # Freeze measurement before shutdown motion and resource cleanup.
+                # Stop the camera BEFORE leaving the no_media SDK context, so
+                # the daemon can safely reacquire the camera when the context exits.
                 if started is not None:
                     ended = time.perf_counter()
 
@@ -356,6 +365,13 @@ def main() -> None:
                         engine.close()
                     except Exception:
                         pass
+
+                if source is not None:
+                    try:
+                        source.close()
+                    except Exception as exc:
+                        print(f"Camera cleanup warning: {exc}", flush=True)
+                    source = None
 
                 try:
                     mini.goto_target(
@@ -373,7 +389,7 @@ def main() -> None:
                     )
 
     finally:
-        # Release camera/model/audio resources regardless of connection outcome.
+        # Safety cleanup for setup errors that happen after creating the source.
         if source is not None:
             try:
                 source.close()
