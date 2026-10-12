@@ -82,6 +82,7 @@ class Pipeline:
         self._thinking_count = 0
         self._free_count = 0
         self._tasks = queue.Queue()
+        self._lock = threading.Lock()  # close() vs the worker saving the recording or starting the trainer
         self._stop = threading.Event()
         self._worker = threading.Thread(target=self._run_tasks, name="coach-tasks", daemon=True)
         self.sender = self.gesture_mini = None
@@ -110,7 +111,9 @@ class Pipeline:
 
     def update(self, now, keypoints):
         """Process one camera frame (`now` = `time.perf_counter()`). Never blocks."""
-        if self.sender is not None:
+        # While a gesture owns the head, do not follow: on the robot the camera moves with the head, so the
+        # follower would integrate the gesture's own motion and overshoot when follow resumes.
+        if self.sender is not None and now >= self.sender.paused_until:
             yaw, pitch = self.follow(keypoints, now)
             self.sender.head = self._head_pose(yaw=yaw, pitch=pitch, degrees=True)
         phase = self.phase
@@ -155,17 +158,21 @@ class Pipeline:
         return lines
 
     def close(self):
-        """Stop everything; keep what was recorded if the session ended before training."""
-        if self.recorder.has_rounds and self.saved_path is None:
-            try:
-                print(f"Saved what was recorded: {self._save()}")
-            except OSError:
-                logger.exception("Could not save the partial recording")
-        self.trainer.stop()
+        """Stop everything; keep what was recorded if the session ended before training. Safe before `start`."""
+        self._stop.set()
+        if self.gesture_mini is not None:
+            self.gesture_mini.closed = True
+        with self._lock:  # the worker may be saving or starting the trainer right now
+            if self.recorder.has_rounds and self.saved_path is None:
+                try:
+                    print(f"Saved what was recorded: {self._save()}")
+                except OSError:
+                    logger.exception("Could not save the partial recording")
+            self.trainer.stop()
         if self.engine is not None:
             self.engine.close()
-        self._stop.set()
-        self._worker.join(timeout=2.0)
+        if self._worker.is_alive():
+            self._worker.join(timeout=2.0)
         if self.sender is not None:
             self.sender.stop()
 
@@ -273,6 +280,8 @@ class Pipeline:
             self._free_count += 1
         self._say(text)
         time.sleep(GO_DELAY_S)
+        if self._stop.is_set():
+            return
         self._say(phrases.go(), wait=False)
         rec.start_round(time.perf_counter())
         self.phase = Phase.ROUND
@@ -286,15 +295,24 @@ class Pipeline:
         return self.saved_path
 
     def _task_train(self):
-        try:
-            print(f"Recording saved: {self._save()}")
-        except OSError:
-            logger.exception("Could not save the recording")
+        with self._lock:
+            if self._stop.is_set():
+                return  # aborted: close() saves what was recorded, and an abort never trains
+            try:
+                print(f"Recording saved: {self._save()}")
+                saved = True
+            except OSError:
+                logger.exception("Could not save the recording")
+                saved = False
+        if not saved:
             self._say(phrases.save_failed())
             self.phase = Phase.DONE
             return
         self._say(phrases.thanks_training())
-        self.trainer.start()
+        with self._lock:
+            if self._stop.is_set():
+                return
+            self.trainer.start()
         self._last_thinking = time.perf_counter()
         self.phase = Phase.TRAINING
 

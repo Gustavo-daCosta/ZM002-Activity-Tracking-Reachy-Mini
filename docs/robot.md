@@ -53,7 +53,7 @@ this Mac cannot run the same pose model, so the backend is selected per environm
 
 ```bash
 robot/deploy.sh   # ships training/, the exercise model and the group's recordings (~/coach_data/)
-ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
+ssh -t reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
 ```
 
 The robot introduces itself, guides the child through about 4.5 minutes of recording (squats, arm raises,

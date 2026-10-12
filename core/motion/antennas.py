@@ -88,7 +88,8 @@ class TargetSender:
     def stop(self):
         """Stop the thread and wait for it."""
         self._stop.set()
-        self._thread.join(timeout=2.0)
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
 
     def _run(self):
         while not self._stop.is_set():

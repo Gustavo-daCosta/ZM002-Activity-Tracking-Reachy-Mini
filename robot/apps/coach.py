@@ -1,7 +1,7 @@
 """The coach on the robot: Reachy Mini learns a child's exercises on its own CPU, then plays the workout.
 
 On the robot (camera through Picamera2, view the camera at http://<robot>:8080/):
-    ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
+    ssh -t reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
 
 Data stays on the robot: recordings (keypoints only) in ~/coach_data/recordings/<name>/, models in
 ~/coach_data/models/<name>.npz. robot/deploy.sh copies the group's recordings there. Ctrl+C stops; what was
@@ -20,7 +20,7 @@ from core.pose_backends import create_backend
 from core.stream import MjpegServer
 from core.tracking import CenteringFollower, body_center
 from core.vision import downscale, draw_coco_skeleton, put_text
-from robot.apps.common import Picamera2Source, connect, make_parser, wait_for_frames
+from robot.apps.common import Picamera2Source, connect, install_signal_handlers, make_parser, wait_for_frames
 
 DATA = Path.home() / "coach_data"
 
@@ -42,6 +42,7 @@ def parse_args(argv=None):
 
 def main():
     args = parse_args()
+    install_signal_handlers()  # a dropped ssh link still saves, and puts the robot to sleep
     name = args.name.strip()
     if not sanitize(name):
         raise SystemExit("--name needs letters or digits")
@@ -58,7 +59,8 @@ def main():
     def follow(keypoints, now):
         target = body_center(keypoints, min_score)
         error = None if target is None else (target[0] - 0.5, target[1] - 0.5)
-        dt = 0.0 if last[0] is None else now - last[0]
+        # Capped: the first frame after a gesture (follow paused) must not integrate the whole pause.
+        dt = 0.0 if last[0] is None else min(now - last[0], 0.2)
         last[0] = now
         return follower.update(error, dt)
 

@@ -24,8 +24,11 @@ class GestureMini:
     def __init__(self, mini, sender):
         self._mini = mini
         self._sender = sender
+        self.closed = False
 
     def goto_target(self, *args, **kwargs):
+        if self.closed:  # shutting down: a late gesture must not move a robot that is going to sleep
+            return None
         self._sender.paused_until = float("inf")
         try:
             return self._mini.goto_target(*args, **kwargs)
