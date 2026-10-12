@@ -59,3 +59,10 @@ and runs the existing `SessionEngine` locally. Speech and motion commands theref
 
 Use the command sequence in the **Remote exercise-session test** section of [../README.md](../README.md).
 Start with `--rounds wave --reps-per-round 1` to validate the complete path before trying all exercises.
+
+During remote session mode, head/body tracking is enabled by default while a round is `ACTIVE`. It uses the
+same `CenteringFollower` controller as the local recognition pipeline, driven by the normalized torso center
+from the laptop's COCO-17 keypoints. Tracking is paused during the `SessionEngine` welcome, round intro,
+feedback gestures and outro so it does not overwrite gesture head targets. Use `--no-follow` on
+`robot.remote_camera_server` to disable tracking. The `/status` endpoint includes `head_following` and
+the current tracked head/body yaw values.

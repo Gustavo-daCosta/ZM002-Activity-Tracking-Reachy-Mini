@@ -33,8 +33,10 @@ robot gestures. This keeps session behaviour and audio/movement control on the r
 heavier pose model to the laptop GPU.
 
 Use a small first test (`--rounds wave --reps-per-round 1`) before trying the full round list. The server
-publishes `/health` and `/status` on port 8766. Full start commands are in the **Remote exercise-session
-test** section of [README.md](README.md).
+publishes `/health` and `/status` on port 8766. Head/body tracking reuses `core/tracking.py`'s
+`CenteringFollower` and is enabled by default during active rounds; it pauses during the session's
+expressive gestures so it does not fight them. Add `--no-follow` to disable it. Full start commands are
+in the **Remote exercise-session test** section of [README.md](README.md).
 
 `core/` imports nothing from the other three; [`robot/deploy.sh`](robot/deploy.sh) ships `core/` and
 `robot/` as whole directories, so scikit-learn never reaches the robot.
