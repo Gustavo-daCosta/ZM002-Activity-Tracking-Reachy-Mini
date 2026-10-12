@@ -49,3 +49,13 @@ sample the wave smoothly and the movement looked stepped. Measured on the robot:
 The practical consequence of the first row is the whole reason `core/pose_backends/` exists: the robot and
 this Mac cannot run the same pose model, so the backend is selected per environment behind one interface.
 
+
+
+## Remote GPU pose inference with the workout session on the robot
+
+This mode is useful when the Reachy camera and motors stay on the robot, but MoveNet should run on a CUDA
+GPU in a laptop. The robot streams 192x108 MJPEG frames, receives 17 COCO keypoints per inferred frame,
+and runs the existing `SessionEngine` locally. Speech and motion commands therefore originate on the robot.
+
+Use the command sequence in the **Remote exercise-session test** section of [../README.md](../README.md).
+Start with `--rounds wave --reps-per-round 1` to validate the complete path before trying all exercises.

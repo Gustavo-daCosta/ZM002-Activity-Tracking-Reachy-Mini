@@ -23,6 +23,19 @@ flowchart LR
 | [`sim/`](sim) | Mac only | MuJoCo simulation driven by the webcam |
 | [`training/`](training) | Mac only, needs scikit-learn | recording, dataset loaders, the two trainers |
 
+### Remote session mode: camera on Reachy, pose inference on laptop
+
+`robot/remote_camera_server.py --session` streams the physical camera and accepts keypoint payloads at
+`POST /result`. `robot/apps/remote_session_inference.py` runs MoveNet on the laptop and posts normalized
+COCO-17 points (`(17, 3)`) to that endpoint. The laptop does **not** run the workout state machine. The
+Reachy runs `ActionMonitor` and `SessionEngine`, including repetition counting, round timeouts, speech and
+robot gestures. This keeps session behaviour and audio/movement control on the robot while moving only the
+heavier pose model to the laptop GPU.
+
+Use a small first test (`--rounds wave --reps-per-round 1`) before trying the full round list. The server
+publishes `/health` and `/status` on port 8766. Full start commands are in the **Remote exercise-session
+test** section of [README.md](README.md).
+
 `core/` imports nothing from the other three; [`robot/deploy.sh`](robot/deploy.sh) ships `core/` and
 `robot/` as whole directories, so scikit-learn never reaches the robot.
 
