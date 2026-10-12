@@ -21,6 +21,8 @@ DEFAULT_LABELS: dict[str, str] = {
     "squat":         "Squat detected",
     "clapping":      "Clapping detected",
     "jumping_jacks": "Jumping jacks detected",
+    "arm_raise":     "Arm raise detected",
+    "side_bend":     "Side bend detected",
 }
 
 DEFAULT_RATE: int = -30      # speech rate can go from -100 to 100

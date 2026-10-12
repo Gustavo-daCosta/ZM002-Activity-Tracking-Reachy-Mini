@@ -17,6 +17,8 @@ from core.motion.window import ACTION_WINDOW_S, KeypointWindow, normalize_to_tor
 
 ACTIONS = (NONE, "wave", "pushup", "squat", "clapping", "jumping_jacks")
 DEFAULT_ACTION_MODEL = MODELS_DIR / "action_classifier.npz"
+# none/squat/arm_raise/side_bend, trained on the group's recordings (training/train_exercises.py).
+EXERCISE_MODEL = MODELS_DIR / "exercise_classifier.npz"
 GREEN, GREY, YELLOW, CYAN = (0, 255, 0), (200, 200, 200), (255, 200, 0), (0, 255, 255)
 
 # One antenna signature per action: (amplitude deg, Hz, whole cycles). Whole cycles end at sin = 0, the
@@ -24,6 +26,7 @@ GREEN, GREY, YELLOW, CYAN = (0, 255, 0), (200, 200, 200), (255, 200, 0), (0, 255
 REACTIONS = {
     "wave": (20.0, 1.5, 2), "clapping": (12.0, 3.0, 3), "pushup": (30.0, 0.8, 1),
     "squat": (25.0, 1.1, 2), "jumping_jacks": (35.0, 2.2, 4),
+    "arm_raise": (30.0, 1.5, 2), "side_bend": (18.0, 0.8, 1),
 }
 
 
@@ -56,6 +59,11 @@ class ActionDetector:
         self._forest = None
         if self.path.exists():
             self._forest = load_forest(self.path, feature_names=ACTION_FEATURE_NAMES, window_s=ACTION_WINDOW_S)
+
+    @property
+    def classes(self):
+        """Class names the loaded model predicts (empty without a model)."""
+        return list(self._forest.classes) if self.available else []
 
     @property
     def available(self):
@@ -108,10 +116,10 @@ class ActionMonitor:
                              "`python -m training.train_actions --ntu ... --ucf ...`")
         self.features = None
         self.detection = None
-        self.counts = {action: 0 for action in ACTIONS}
+        self.counts = {action: 0 for action in self.detector.classes}
         self.reactions = {action: AntennaWave(amplitude, hz, cycles / hz)
                           for action, (amplitude, hz, cycles) in REACTIONS.items()}
-        self._answered_at = {action: None for action in ACTIONS}
+        self._answered_at = {action: None for action in self.detector.classes}
         if voice is True:
             self.voice: ActionVoice | None = ActionVoice()
         elif voice is False or voice is None:

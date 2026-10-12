@@ -10,6 +10,7 @@ shoulders, then nose) and the window shows the model output with live timings.
     reachy_mini_env/bin/python -m sim.body_tracking --model vitpose-s
     reachy_mini_env/bin/python -m sim.body_tracking --detect-wave     # + wave recognition (antennas wave back)
     reachy_mini_env/bin/python -m sim.body_tracking --detect-actions  # + six-class action recognition
+    sim/exercises.sh                                                 # squat / arm raise / side bend, one command
 
 The camera is selected by NAME (`--camera FaceTime`), never by index: OpenCV's indices move when an
 iPhone connects through Continuity Camera.
@@ -44,8 +45,9 @@ def parse_args(argv=None):
     parser.add_argument("--wave-trigger", choices=["auto", "rules", "classifier"], default="auto",
                         help="detector that makes the robot react (auto: classifier if trained, else rules)")
     parser.add_argument("--detect-actions", action="store_true",
-                        help="recognize six actions (none/wave/pushup/squat/clapping/jumping_jacks); the "
-                             "antennas answer each one with its own signature. Needs the whole body in frame")
+                        help="recognize the actions of --action-model (default: none/wave/pushup/squat/clapping/"
+                             "jumping_jacks); the antennas answer each one with its own signature. Needs the whole "
+                             "body in frame")
     parser.add_argument("--action-model", default=None,
                         help="action model to run (default: core/models/action_classifier.npz)")
     return parser.parse_args(argv)

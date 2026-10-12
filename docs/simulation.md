@@ -93,6 +93,25 @@ reachy_mini_env/bin/python -m sim.body_tracking
 Press `q` or `ESC` in the webcam window to quit. The head returns to center. Stop the simulation with `Ctrl+C`
 in terminal 1.
 
+### Exercises: squat, arm raise, side bend
+
+One command starts the simulation (unless one is already running), opens the webcam and recognizes the
+three physiotherapy exercises; the antennas answer each one with their own movement:
+
+```bash
+sim/exercises.sh                    # extra args go to sim.body_tracking, e.g. --camera FaceTime
+```
+
+Stand 2-3 m back, whole body in view, facing the camera. `ESC` closes the webcam and the simulation it started.
+The model (`core/models/exercise_classifier.npz`) is trained on the group's recordings in `collect/recordings/`
+(gitignored, made with `collect/record_exercises.py`); retrain after adding sessions:
+
+```bash
+reachy_mini_env/bin/python -m training.train_exercises
+```
+
+It prints a leave-one-person-out report (each person scored by a model that never saw them).
+
 ### Options
 
 ```bash
