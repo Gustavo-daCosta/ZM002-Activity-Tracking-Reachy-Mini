@@ -35,9 +35,15 @@ MAX_FOLDS = 5
 
 
 def load_windows(recordings=RECORDINGS):
-    """(X, y, groups): one row per window, labeled with the class name, grouped by person."""
+    """(X, y, groups): one row per window, labeled with the class name, grouped by person.
+
+    `recordings` is one folder or several (the coach keeps children's sessions apart from the group's);
+    a folder given twice is read once.
+    """
+    folders = [recordings] if isinstance(recordings, (str, Path)) else recordings
+    folders = list(dict.fromkeys(Path(folder).resolve() for folder in folders))
     rows, labels, people = [], [], []
-    for path in sorted(Path(recordings).glob("*/session_*.npz")):
+    for path in sorted(path for folder in folders for path in folder.glob("*/session_*.npz")):
         with np.load(path) as data:
             session = {key: data[key] for key in ("t", "keypoints", "labels", "rounds")}
             session["aspect_ratio"] = float(data["aspect_ratio"])
@@ -56,11 +62,12 @@ def load_windows(recordings=RECORDINGS):
 def main():
     """Entry point."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--recordings", default=str(RECORDINGS), help="folder with <person>/session_*.npz")
+    parser.add_argument("--recordings", nargs="+", default=[str(RECORDINGS)],
+                        help="one or more folders with <person>/session_*.npz")
     parser.add_argument("--out", default=str(EXERCISE_MODEL), help="where to write the model")
     args = parser.parse_args()
 
-    print(f"Loading {args.recordings}...")
+    print(f"Loading {', '.join(args.recordings)}...")
     X, y, people = load_windows(args.recordings)
     classes = sorted(set(y.tolist()))
     print(f"{len(y)} windows, {len(set(people))} people: "

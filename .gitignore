@@ -38,4 +38,6 @@ docs/superpowers/
 collect.zip
 collect/*.zip
 collect/recordings/
+# The coach's own recordings in simulation (sim/coach.py), kept apart from the group's dataset.
+collect/coach_recordings/
 collect/.venv/

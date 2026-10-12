@@ -128,7 +128,9 @@ reachy_mini_env/bin/python -m sim.coach --name Caio --workout-only              
 
 Stand 2-3 m back with your whole body in view; recording starts by itself after 5 s. A round where you were
 out of view or did not move is repeated once. Only keypoints are saved (no video), in
-`collect/recordings/<name>/`; the model goes to `core/models/users/<name>.npz`. If training fails the
+`collect/coach_recordings/<name>/`, apart from the group's dataset in `collect/recordings/` (which the coach
+only reads, so test runs never change the shipped model's data); the model trains on both and goes to
+`core/models/users/<name>.npz`. If training fails the
 workout uses the group model.
 
 ### Options

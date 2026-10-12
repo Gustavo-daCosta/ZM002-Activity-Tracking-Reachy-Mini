@@ -8,7 +8,8 @@
     reachy_mini_env/bin/python -m sim.coach --name Caio --rounds 1 --round-seconds 4   # ~1 min dry run
     reachy_mini_env/bin/python -m sim.coach --name Caio --workout-only                 # reuse your model
 
-The recording goes to collect/recordings/<name>/ (keypoints only, gitignored) and the model to
+The recording goes to collect/coach_recordings/<name>/ (keypoints only, gitignored), apart from the group's
+dataset in collect/recordings/ so test runs never leak into it; the model trains on both folders and goes to
 core/models/users/<name>.npz. ESC in the window stops; what was recorded is kept.
 """
 
@@ -28,6 +29,7 @@ from core.tracking import HeadFollower, body_center, image_error_to_angles
 from core.vision import add_camera_argument, draw_coco_skeleton, open_camera, put_text
 
 REPO = Path(__file__).resolve().parents[1]
+GROUP_RECORDINGS = REPO / "collect" / "recordings"
 WINDOW = "Reachy Mini - Coach"
 
 
@@ -45,7 +47,8 @@ def parse_args(argv=None):
     parser.add_argument("--min-motion", type=float, default=MIN_MOTION, help="quality check: torso lengths")
     parser.add_argument("--reps", type=int, default=3, help="workout reps per exercise (default 3)")
     parser.add_argument("--workout-only", action="store_true", help="skip recording, play with the saved model")
-    parser.add_argument("--recordings", default=str(REPO / "collect" / "recordings"), help="recordings folder")
+    parser.add_argument("--recordings", default=str(REPO / "collect" / "coach_recordings"),
+                        help="where the coach saves (the group's collect/recordings is only read)")
     parser.add_argument("--models", default=str(REPO / "core" / "models" / "users"), help="per-child models")
     parser.add_argument("--voice-model", default=DEFAULT_VOICE, help="Piper voice")
     parser.add_argument("--max-yaw", type=float, default=40.0, help="head yaw at the image edge (deg)")
@@ -83,7 +86,7 @@ def main():
     voice = ActionVoice(voice_model=args.voice_model)
     recorder = GuidedRecorder(frame.shape[1] / frame.shape[0], min_score, args.rounds, args.round_seconds,
                               min_visible=args.min_visible, min_motion=args.min_motion)
-    trainer = Trainer(args.recordings, model_out)
+    trainer = Trainer([GROUP_RECORDINGS, args.recordings], model_out)
     connection = "localhost_only" if args.host in ("localhost", "127.0.0.1") else "network"
     with ReachyMini(host=args.host, connection_mode=connection, media_backend="no_media") as mini:
         mini.goto_target(head=create_head_pose(), antennas=list(NEUTRAL_ANTENNAS), duration=1.0)

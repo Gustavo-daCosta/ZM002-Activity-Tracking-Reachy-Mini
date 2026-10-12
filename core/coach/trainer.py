@@ -24,8 +24,9 @@ class Trainer:
         state: "idle", "running", "done" or "failed".
     """
 
-    def __init__(self, recordings_dir, out_path, timeout_s=TRAIN_TIMEOUT_S, python=sys.executable):
-        self.recordings_dir = Path(recordings_dir)
+    def __init__(self, recordings, out_path, timeout_s=TRAIN_TIMEOUT_S, python=sys.executable):
+        """`recordings`: one folder of <person>/session_*.npz, or a list of them."""
+        self.recordings = [recordings] if isinstance(recordings, (str, Path)) else list(recordings)
         self.out_path = Path(out_path)
         self.log_path = self.out_path.with_suffix(".log")
         self._partial = self.out_path.with_suffix(".training.npz")
@@ -47,7 +48,7 @@ class Trainer:
         self._partial.unlink(missing_ok=True)
         self._log = open(self.log_path, "w")
         command = ["nice", "-n", "10", self.python, "-m", "training.train_exercises",
-                   "--recordings", str(self.recordings_dir), "--out", str(self._partial)]
+                   "--recordings", *map(str, self.recordings), "--out", str(self._partial)]
         self._process = subprocess.Popen(command, cwd=REPO, stdout=self._log, stderr=subprocess.STDOUT)
         self._started = time.monotonic()
         self.state = "running"
