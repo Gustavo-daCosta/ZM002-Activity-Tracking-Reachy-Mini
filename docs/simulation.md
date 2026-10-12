@@ -112,6 +112,25 @@ reachy_mini_env/bin/python -m training.train_exercises
 
 It prints a leave-one-person-out report (each person scored by a model that never saw them).
 
+### Coach: the robot learns your exercises
+
+The robot introduces itself, guides you through recording squats, arm raises and side bends (about
+4.5 minutes, the same rounds as the collect kit), trains a model on your recording plus the group's, then
+plays a workout with you using it. It talks the whole time and its head follows you. Made for children:
+every line is short and friendly.
+
+```bash
+sim/start.sh                                                      # terminal 1
+reachy_mini_env/bin/python -m sim.coach --name Caio               # terminal 2
+reachy_mini_env/bin/python -m sim.coach --name Caio --rounds 1 --round-seconds 4   # ~1 min dry run
+reachy_mini_env/bin/python -m sim.coach --name Caio --workout-only                 # play again
+```
+
+Stand 2-3 m back with your whole body in view; recording starts by itself after 5 s. A round where you were
+out of view or did not move is repeated once. Only keypoints are saved (no video), in
+`collect/recordings/<name>/`; the model goes to `core/models/users/<name>.npz`. If training fails the
+workout uses the group model.
+
 ### Options
 
 ```bash
