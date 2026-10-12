@@ -203,37 +203,57 @@ SQUAT_DEMO: list[GestureStep] = [
 ]
 
 
-# Arm raise:
-# 1. Antennae start in the neutral, upright position.
-# 2. Both antennae extend outward to the horizontal demonstration pose.
-# 3. They return to upright and repeat the movement.
+# Antenna joint positions are [left, right], in radians.
 #
-# The head is not commanded during these steps.
+# Sleep position:
+#   Both antennas hang down close to the robot's body.
+#
+# Arm raise:
+#   Both antennas rotate outward by approximately 90 degrees,
+#   so they extend horizontally away from the body.
+
+ARM_RAISE_SLEEP = [-3.05, 3.05]
+
+ARM_RAISE_HORIZONTAL = [
+    -math.pi / 2,
+    math.pi / 2,
+]
+
+
 ARM_RAISE_DEMO: list[GestureStep] = [
+    # 1. Start with both antennas hanging down in the sleep position.
     GestureStep(
-        None,
-        list(NEUTRAL_ANTENNAS),
-        0.5,
+        head_kwargs=None,
+        antennas=list(ARM_RAISE_SLEEP),
+        duration=0.8,
     ),
+
+    # 2. Raise both antennas outward to the horizontal position.
     GestureStep(
-        None,
-        list(ARM_RAISE_HORIZONTAL),
-        0.8,
+        head_kwargs=None,
+        antennas=list(ARM_RAISE_HORIZONTAL),
+        duration=1.0,
     ),
+
+    # 3. Lower both antennas back to the hanging sleep position.
     GestureStep(
-        None,
-        list(NEUTRAL_ANTENNAS),
-        0.8,
+        head_kwargs=None,
+        antennas=list(ARM_RAISE_SLEEP),
+        duration=1.0,
     ),
+
+    # 4. Demonstrate the arm raise a second time.
     GestureStep(
-        None,
-        list(ARM_RAISE_HORIZONTAL),
-        0.8,
+        head_kwargs=None,
+        antennas=list(ARM_RAISE_HORIZONTAL),
+        duration=1.0,
     ),
+
+    # 5. Finish with both antennas hanging down.
     GestureStep(
-        None,
-        list(NEUTRAL_ANTENNAS),
-        0.8,
+        head_kwargs=None,
+        antennas=list(ARM_RAISE_SLEEP),
+        duration=1.0,
     ),
 ]
 
