@@ -4,7 +4,8 @@
 
 Reads every `collect/recordings/<person>/session_*.npz` written by `collect/record_exercises.py`, cuts
 3 s windows inside each labeled round with the same `KeypointWindow` the live monitor uses, and scores
-the forest leave-one-person-out: the number printed is what a person the model never saw should get.
+the forest on people it never saw (leave-one-person-out up to 5 people): the number printed is what a new
+person should get.
 The final model is fitted on everyone and exported as a numpy forest for `ActionMonitor`.
 """
 
@@ -14,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
+from sklearn.model_selection import GroupKFold, cross_val_predict
 
 from core.motion.actions import EXERCISE_MODEL
 from core.motion.features import ACTION_FEATURE_NAMES, action_features_vector
@@ -28,6 +29,9 @@ STEP_S = 0.5
 # MoveNet's own default: at 2-3 m it scores shoulders ~0.45, so the 0.5 of the public-data pipeline drops
 # whole sessions. The live app uses the same value (`MoveNetBackend.default_min_score`).
 MIN_SCORE = 0.3
+# Each fold holds out whole people. Leave-one-person-out up to MAX_FOLDS people; beyond that the folds group
+# people together, so every child the coach adds does not cost one more fit on the robot's CPU.
+MAX_FOLDS = 5
 
 
 def load_windows(recordings=RECORDINGS):
@@ -65,11 +69,15 @@ def main():
     model = RandomForestClassifier(n_estimators=N_ESTIMATORS, class_weight="balanced_subsample",
                                    random_state=0, n_jobs=-1)
     # Every training fold holds all four classes, so predict_proba columns follow `classes` (sorted).
-    probabilities = cross_val_predict(model, X, y, groups=people, cv=LeaveOneGroupOut(), method="predict_proba")
+    n_people = len(set(people.tolist()))
+    if n_people < 2:
+        raise SystemExit(f"Need recordings of at least 2 people to score the model, found {n_people}.")
+    folds = GroupKFold(n_splits=min(MAX_FOLDS, n_people))
+    probabilities = cross_val_predict(model, X, y, groups=people, cv=folds, method="predict_proba")
     floors = tune_floors(probabilities, y, classes)
     predicted = _predict_with_floors(probabilities, classes, floors)
 
-    print("\nLeave-one-person-out (the model never saw the person it is scored on):")
+    print(f"\n{folds.n_splits}-fold by person (the model never saw the person it is scored on):")
     print(classification_report(y, predicted, labels=classes, digits=3, zero_division=0))
     print("Confusion (rows = truth, columns = predicted):", " ".join(classes))
     print(confusion_matrix(y, predicted, labels=classes))
