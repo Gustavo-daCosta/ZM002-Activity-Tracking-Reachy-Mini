@@ -281,8 +281,11 @@ def annotate(
     panel,
     panel_lines,
 ):
-    """Draw the skeleton and the live panel on the frame."""
+    """Draw the skeleton and a compact, translucent status panel."""
 
+    import cv2
+
+    # Draw the pose skeleton first so the status panel stays readable.
     if result.keypoints is not None:
         draw_coco_skeleton(
             frame,
@@ -290,23 +293,84 @@ def annotate(
             min_score,
         )
 
-    put_text(
-        frame,
-        f"{model_name}  FPS {panel['fps']:.1f}",
-        1,
+    # Compact text settings.
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.45
+    thickness = 1
+
+    padding_x = 9
+    padding_y = 7
+    row_height = 19
+
+    # First row: model and FPS.
+    rows = [
+        (
+            f"{model_name}  |  FPS: {panel['fps']:.1f}",
+            (255, 255, 255),
+        )
+    ]
+
+    # Additional status and activity counters.
+    rows.extend(panel_lines)
+
+    # Calculate the required panel dimensions.
+    text_sizes = [
+        cv2.getTextSize(text, font, font_scale, thickness)[0]
+        for text, _ in rows
+    ]
+
+    text_width = max(
+        (size[0] for size in text_sizes),
+        default=0,
     )
 
-    for row, (text, color) in enumerate(
-        panel_lines,
-        start=2,
-    ):
-        put_text(
+    panel_width = text_width + 2 * padding_x
+    panel_height = (
+        len(rows) * row_height
+        + 2 * padding_y
+    )
+
+    # Keep the panel inside the image.
+    panel_width = min(panel_width, frame.shape[1])
+    panel_height = min(panel_height, frame.shape[0])
+
+    # Create a translucent black background.
+    overlay = frame.copy()
+
+    cv2.rectangle(
+        overlay,
+        (0, 0),
+        (panel_width, panel_height),
+        (0, 0, 0),
+        thickness=-1,
+    )
+
+    # Blend the black panel with the original frame.
+    alpha = 0.78
+
+    cv2.addWeighted(
+        overlay,
+        alpha,
+        frame,
+        1.0 - alpha,
+        0,
+        frame,
+    )
+
+    # Draw the text over the panel.
+    for index, (text, color) in enumerate(rows):
+        y = padding_y + (index + 1) * row_height - 3
+
+        cv2.putText(
             frame,
             text,
-            row,
+            (padding_x, y),
+            font,
+            font_scale,
             color,
+            thickness,
+            cv2.LINE_AA,
         )
-
 
 def wait_for_frames(
     source,
