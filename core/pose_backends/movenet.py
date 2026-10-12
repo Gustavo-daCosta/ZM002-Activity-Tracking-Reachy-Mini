@@ -50,11 +50,15 @@ def letterbox(frame_bgr, size):
     new_width = round(width * scale)
     new_height = round(height * scale)
 
-    resized = cv2.resize(
-        frame_bgr,
-        (new_width, new_height),
-        interpolation=cv2.INTER_LINEAR,
-    )
+    if (new_width, new_height) == (width, height):
+        # Already at the required image dimensions: do not resize.
+        resized = frame_bgr
+    else:
+        resized = cv2.resize(
+            frame_bgr,
+            (new_width, new_height),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
     pad_x = (size - new_width) // 2
     pad_y = (size - new_height) // 2
