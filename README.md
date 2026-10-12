@@ -64,6 +64,16 @@ robot can do this class of task at all — the feasibility question the project 
 pipeline a CMAS scorer would need: person detection, skeleton extraction on a constrained CPU, temporal
 windowing, and per-repetition recognition with an honest confidence floor.
 
+## Remote session with the personalized Coach model
+
+To run the personalized activity classifier trained by `robot.apps.coach`, pass its saved `.npz` file to the
+Reachy server using `--activity-model`. The laptop still runs MoveNet and sends COCO-17 keypoints; activity
+classification and the session engine run on the Reachy. The Coach model for `Ana` is normally saved at
+`~/coach_data/models/ana.npz` and supports `squat`, `arm_raise`, and `side_bend` (plus `none`), not `clapping`,
+`jumping_jacks`, or `wave`. Use those three supported exercise names for a session with the personalized model.
+See [docs/robot.md](docs/robot.md#remote-gpu-pose-inference-with-personalized-activity-recognition) for the
+exact commands on both devices.
+
 ## Documentation
 
 | Document | Covers |

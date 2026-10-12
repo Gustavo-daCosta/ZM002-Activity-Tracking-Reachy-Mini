@@ -20,6 +20,7 @@ import argparse
 import json
 import math
 import threading
+from pathlib import Path
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -42,6 +43,15 @@ def main():
         "--session",
         action="store_true",
         help="run SessionEngine on the robot; /result must contain MoveNet keypoints",
+    )
+    parser.add_argument(
+        "--activity-model",
+        default=None,
+        help=(
+            "path to an exported activity-classifier .npz; defaults to the shared six-class model. "
+            "For the personalized coach model, use ~/coach_data/models/<name>.npz and choose rounds "
+            "that model knows (typically squat,arm_raise,side_bend)."
+        ),
     )
     parser.add_argument("--rounds", default="squat,clapping,jumping_jacks,wave")
     parser.add_argument("--reps-per-round", type=int, default=1)
@@ -77,7 +87,14 @@ def main():
 
     latest = {"received_at": 0.0, "payload": None, "version": 0}
     lock = threading.Lock()
-    runtime = {"engine": None, "session_enabled": args.session, "follower": None}
+    runtime = {
+        "engine": None,
+        "session_enabled": args.session,
+        "follower": None,
+        "monitor": None,
+        "activity_model": None,
+        "activity_classes": [],
+    }
 
     class ResultHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -97,7 +114,21 @@ def main():
                 "inference_connected": payload is not None and now - received_at < 1.0,
                 "model": payload.get("model") if isinstance(payload, dict) else None,
                 "inference_fps": payload.get("fps") if isinstance(payload, dict) else None,
+                "activity_model": runtime["activity_model"],
+                "activity_classes": runtime["activity_classes"],
             }
+
+            monitor_status = runtime.get("monitor")
+            if monitor_status is not None and monitor_status.detection is not None:
+                detection = monitor_status.detection
+                body_data.update({
+                    "detected_action": detection.action,
+                    "detected_confidence": round(float(detection.score), 4),
+                    "action_probabilities": {
+                        str(name): round(float(score), 4)
+                        for name, score in detection.probabilities.items()
+                    },
+                })
 
             follower_status = runtime.get("follower")
             if follower_status is not None:
@@ -187,15 +218,38 @@ def main():
                 from core.session.engine import SessionEngine, SessionState
                 from reachy_mini.utils import create_head_pose
 
-                detector = ActionDetector(DEFAULT_ACTION_MODEL)
+                activity_model = (
+                    Path(args.activity_model).expanduser()
+                    if args.activity_model
+                    else DEFAULT_ACTION_MODEL
+                )
+                try:
+                    detector = ActionDetector(activity_model)
+                except (OSError, ValueError) as exc:
+                    raise SystemExit(f"Could not load activity model {activity_model}: {exc}") from exc
                 if not detector.available:
                     raise SystemExit(
-                        f"No action model at {DEFAULT_ACTION_MODEL}. "
-                        "Ensure core/models/action_classifier.npz exists on the robot."
+                        f"No activity model at {activity_model}. "
+                        "Provide an exported .npz with --activity-model or ensure "
+                        "core/models/action_classifier.npz exists on the robot."
                     )
                 rounds = [item.strip() for item in args.rounds.split(",") if item.strip()]
                 if not rounds:
                     raise SystemExit("--rounds must contain at least one action")
+                unsupported = [action for action in rounds if action not in detector.classes or action == "none"]
+                if unsupported:
+                    raise SystemExit(
+                        f"The activity model {activity_model} does not contain requested round(s): "
+                        f"{', '.join(unsupported)}. Available classes: {', '.join(detector.classes)}. "
+                        "Choose rounds supported by the selected model. The personalized coach model "
+                        "typically supports squat,arm_raise,side_bend; it does not recognize "
+                        "clapping,jumping_jacks,or wave."
+                    )
+
+                runtime["activity_model"] = str(activity_model.expanduser().resolve())
+                runtime["activity_classes"] = list(detector.classes)
+                print(f"Activity classifier: {runtime['activity_model']}")
+                print(f"Activity classes: {', '.join(detector.classes)}")
 
                 voice = ActionVoice(voice_model=args.voice_model)
                 plan = SessionPlan.create(
@@ -211,6 +265,7 @@ def main():
                 )
                 engine = SessionEngine(plan=plan, monitor=monitor, voice=voice, mini=mini)
                 runtime["engine"] = engine
+                runtime["monitor"] = monitor
 
                 if args.follow:
                     follower = CenteringFollower(

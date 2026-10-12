@@ -65,18 +65,83 @@ Recordings (keypoints only) and models stay in `~/coach_data/` on the robot; del
 `rm -r ~/coach_data/recordings/<name> ~/coach_data/models/<name>.*`. `--workout-only` replays the workout
 with a saved model.
 
-## Remote GPU pose inference with the workout session on the robot
+## Remote GPU pose inference with personalized activity recognition
 
-This mode is useful when the Reachy camera and motors stay on the robot, but MoveNet should run on a CUDA
-GPU in a laptop. The robot streams 192x108 MJPEG frames, receives 17 COCO keypoints per inferred frame,
-and runs the existing `SessionEngine` locally. Speech and motion commands therefore originate on the robot.
+In this setup, the laptop runs MoveNet pose inference on its NVIDIA GPU, then sends COCO-17 keypoints to the
+Reachy. The Reachy runs the activity classifier, repetition counter, `SessionEngine`, spoken feedback and
+head/body tracking. `robot.apps.remote_session_inference` does **not** load the activity classifier; the model
+is selected by `robot.remote_camera_server` on the Reachy.
 
-Use the command sequence in the **Remote exercise-session test** section of [../README.md](../README.md).
-Start with `--rounds wave --reps-per-round 1` to validate the complete path before trying all exercises.
+### Use the model trained by the Coach app
 
-During remote session mode, head/body tracking is enabled by default while a round is `ACTIVE`. It uses the
-same `CenteringFollower` controller as the local recognition pipeline, driven by the normalized torso center
-from the laptop's COCO-17 keypoints. Tracking is paused during the `SessionEngine` welcome, round intro,
-feedback gestures and outro so it does not overwrite gesture head targets. Use `--no-follow` on
-`robot.remote_camera_server` to disable tracking. The `/status` endpoint includes `head_following` and
-the current tracked head/body yaw values.
+Running `robot.apps.coach --name Ana` records guided examples for `none`, `squat`, `arm_raise` and `side_bend`,
+then trains a person-aware random forest. Its default output path is:
+
+```bash
+/home/pollen/coach_data/models/ana.npz
+```
+
+The name is normalized to lowercase. Check the file on the Reachy:
+
+```bash
+ls -lh ~/coach_data/models/ana.npz
+```
+
+If it does not exist, run the Coach recording/training flow first (it also starts its local workout when
+training completes):
+
+```bash
+cd ~/wave_app
+~/camera_env/bin/python -m robot.apps.coach \
+  --name Ana \
+  --stream-port 8080 \
+  --train-python ~/wave_env/bin/python
+```
+
+The resulting personalized model recognizes only its trained classes: `none`, `squat`, `arm_raise` and
+`side_bend`. Use `squat,arm_raise,side_bend` as the session rounds. It cannot classify `clapping`,
+`jumping_jacks` or `wave`; use the default shared six-class model for those, or collect training data and fit a
+model that includes those labels.
+
+Start the server on the Reachy and explicitly select the Coach model:
+
+```bash
+cd ~/reachy-source
+source ~/camera_env/bin/activate
+python -m robot.remote_camera_server \
+  --host localhost \
+  --width 192 \
+  --height 108 \
+  --session \
+  --follow \
+  --activity-model ~/coach_data/models/ana.npz \
+  --rounds squat,arm_raise,side_bend \
+  --reps-per-round 4 \
+  --timeout 60
+```
+
+Then run the pose-inference client on the Ubuntu laptop as usual:
+
+```bash
+cd ~/ZM002-Activity-Tracking-Reachy-Mini
+source reachy_mini_env/bin/activate
+python -m robot.apps.remote_session_inference \
+  --model movenet-lightning \
+  --remote-camera http://10.42.0.66:8765/stream.mjpg \
+  --result-url http://10.42.0.66:8766/result \
+  --width 192 \
+  --window
+```
+
+To confirm the model selection and inspect its current predictions, query the Reachy's status endpoint:
+
+```bash
+curl -s http://10.42.0.66:8766/status
+```
+
+It reports `activity_model`, `activity_classes`, `detected_action`, `detected_confidence`, and
+`action_probabilities`. During an active round, the `action` field in the session state is the *target* action;
+`detected_action` is the model's current prediction.
+
+Head/body tracking is enabled by default during active rounds. Use `--no-follow` to disable it. Tracking pauses
+during welcome, round-intro, feedback and outro gestures so the follower does not overwrite gesture targets.
