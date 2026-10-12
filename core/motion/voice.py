@@ -341,28 +341,84 @@ class ActionVoice:
         except Exception as sd_exc:
             logger.debug("sounddevice unavailable (%s), falling back to system player", sd_exc)
 
-        # Fallback to system audio players (aplay / pw-play).
-        int16_bytes = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
-        if shutil.which("pw-play") is not None:
+        # Play through the Reachy Mini Wireless audio output.
+        # This is the same ALSA sink used by the working GStreamer test.
+        int16_bytes = (
+            (np.clip(audio, -1.0, 1.0) * 32767)
+            .astype(np.int16)
+            .tobytes()
+        )
+
+        gst = shutil.which("gst-launch-1.0")
+
+        if gst is not None:
+            pipeline = [
+                gst,
+                "-q",
+                "fdsrc",
+                "fd=0",
+                "!",
+                f"audio/x-raw,format=S16LE,rate={sample_rate},channels=1,layout=interleaved",
+                "!",
+                "audioconvert",
+                "!",
+                "audioresample",
+                "!",
+                "alsasink",
+                "device=reachymini_audio_sink",
+                "sync=false",
+            ]
+
+            try:
+                result = subprocess.run(
+                    pipeline,
+                    input=int16_bytes,
+                    capture_output=True,
+                    check=False,
+                    timeout=playback_timeout,
+                )
+
+                if result.returncode == 0:
+                    return
+
+                logger.warning(
+                    "GStreamer playback failed (exit %s): %s",
+                    result.returncode,
+                    result.stderr.decode(errors="replace"),
+                )
+
+            except subprocess.TimeoutExpired:
+                logger.warning("GStreamer audio playback timed out")
+
+        # Fallback: ALSA directly through the configured Reachy sink.
+        aplay = shutil.which("aplay")
+
+        if aplay is not None:
             try:
                 subprocess.run(
-                    ["pw-play", "--rate", str(sample_rate), "--channels", "1", "--format", "s16"],
+                    [
+                        aplay,
+                        "-q",
+                        "-D",
+                        "plug:reachymini_audio_sink",
+                        "-t",
+                        "raw",
+                        "-r",
+                        str(sample_rate),
+                        "-f",
+                        "S16_LE",
+                        "-c",
+                        "1",
+                        "-",
+                    ],
                     input=int16_bytes,
                     check=False,
                     timeout=playback_timeout,
                 )
             except subprocess.TimeoutExpired:
-                logger.warning("pw-play timed out")
-        elif shutil.which("aplay") is not None:
-            try:
-                subprocess.run(
-                    ["aplay", "-q", "-r", str(sample_rate), "-f", "S16_LE", "-c", "1"],
-                    input=int16_bytes,
-                    check=False,
-                    timeout=playback_timeout,
-                )
-            except subprocess.TimeoutExpired:
-                logger.warning("aplay timed out")
+                logger.warning("ALSA audio playback timed out")
+        else:
+            logger.error("Neither GStreamer nor aplay is available")
 
     def _speak_spd_say(self, text: str) -> None:
         """Run spd-say synchronously."""

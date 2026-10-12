@@ -38,6 +38,12 @@ reachy_mini_env/bin/python -m sim.body_tracking --detect-actions
 ./robot/demo.sh                                   # one command: sync, preflight, run
 ```
 
+**Remote workout-session test.** `robot.remote_camera_server --session` runs the workout state machine,
+action classifier, speech and gestures on the Reachy. `robot.apps.remote_session_inference` runs only the
+MoveNet pose backend on the laptop and posts normalized keypoints to the robot. See the remote session
+instructions in [../README.md](../README.md); this path uses a 192x108 MJPEG stream and a GPU-enabled
+laptop environment.
+
 Retraining a model also needs `requirements/training.txt` (scikit-learn):
 
 ```bash
