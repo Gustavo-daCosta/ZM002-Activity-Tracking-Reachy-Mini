@@ -18,6 +18,8 @@ EXERCISE_NOUNS: dict[str, tuple[str, str]] = {
     "jumping_jacks": ("jumping jack", "jumping jacks"),
     "wave":          ("wave", "waves"),
     "pushup":        ("push-up", "push-ups"),
+    "arm_raise":     ("arm raise", "arm raises"),
+    "side_bend":     ("side bend", "side bends"),
 }
 
 
@@ -41,15 +43,15 @@ def get_welcome_speech(num_rounds: int, reps_per_round: int) -> str:
     else:
         rep_phrase = f"{reps_per_round} repetitions each" if num_rounds > 1 else f"{reps_per_round} repetitions"
 
-    return f"Welcome to your workout session! We will do {round_phrase} with {rep_phrase}. Let's begin!"
+    return f"Let's play a game! We'll do {round_phrase}, with {rep_phrase}. Ready? Let's go!"
 
 
 def get_round_intro_speech(round_idx: int, total_rounds: int, action: str, target_reps: int) -> str:
     """Generate round introduction speech with singular/plural agreement."""
     target_phrase = format_exercise_name(action, target_reps)
     if total_rounds > 1:
-        return f"Round {round_idx} of {total_rounds}: please do {target_phrase}!"
-    return f"Please do {target_phrase}!"
+        return f"Round {round_idx} of {total_rounds}! Show me {target_phrase}!"
+    return f"Show me {target_phrase}!"
 
 
 def get_rep_speech(rep_num: int, target_reps: int) -> str:
@@ -61,9 +63,9 @@ def get_rep_speech(rep_num: int, target_reps: int) -> str:
     word = number_words.get(rep_num, str(rep_num))
 
     if target_reps == 1:
-        return f"{word}! Repetition complete."
+        return f"{word}! You did it!"
     elif rep_num >= target_reps:
-        return f"{word}! Target reached."
+        return f"{word}! You did it!"
     else:
         return f"{word}!"
 
@@ -71,12 +73,12 @@ def get_rep_speech(rep_num: int, target_reps: int) -> str:
 def get_round_complete_speech(action: str, reps_done: int, timed_out: bool = False) -> str:
     """Generate round feedback upon completion or timeout."""
     if timed_out and reps_done == 0:
-        return "Time is up for this round. Don't worry, let's keep moving!"
+        return "Time's up! That's okay, let's try the next one!"
 
     done_phrase = format_exercise_name(action, reps_done)
     if timed_out:
-        return f"Time is up! You completed {done_phrase}. Good effort!"
-    return f"Great job! You finished {done_phrase}."
+        return f"Time's up! You did {done_phrase}. Good try!"
+    return f"Yay! You did {done_phrase}!"
 
 
 def get_outro_speech(total_reps: int, completed_rounds: int, total_rounds: int) -> str:
@@ -84,8 +86,8 @@ def get_outro_speech(total_reps: int, completed_rounds: int, total_rounds: int) 
     rep_word = "repetition" if total_reps == 1 else "repetitions"
     round_word = "round" if completed_rounds == 1 else "rounds"
     return (
-        f"Workout complete! Fantastic work, you completed {total_reps} total {rep_word} "
-        f"across {completed_rounds} {round_word}. See you next time!"
+        f"All done! You were amazing! You did {total_reps} {rep_word} "
+        f"in {completed_rounds} {round_word}. Bye bye, see you next time!"
     )
 
 
