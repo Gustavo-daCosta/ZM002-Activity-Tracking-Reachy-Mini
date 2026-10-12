@@ -54,6 +54,36 @@ def get_round_intro_speech(round_idx: int, total_rounds: int, action: str, targe
     return f"Show me {target_phrase}!"
 
 
+def get_round_announcement_speech(round_idx: int, total_rounds: int, action: str) -> str:
+    """Announce the round before the robot demonstrates the exercise."""
+    singular, plural = get_nouns(action)
+    exercise_name = singular if singular == plural else plural
+    if total_rounds > 1:
+        return f"Round {round_idx} of {total_rounds}. Next up: {exercise_name}."
+    return f"Next up: {exercise_name}."
+
+
+def get_exercise_demo_speech(action: str) -> str:
+    """Tell the user the robot will demonstrate the movement before showing it."""
+    prompts = {
+        "squat": "Before you try, I'll show you how squats work. Watch my head move down, then up!",
+        "arm_raise": "Before you try, I'll show you an arm raise. Watch my antennas move out to the sides, then return upright!",
+        "side_bend": "Before you try, I'll show you a side bend. Watch my head and body move from side to side!",
+        "clapping": "Before you try, I'll show you clapping. Watch my antennas move together and open again!",
+        "jumping_jacks": "Before you try, I'll show you jumping jacks. Watch my antennas open out and return!",
+        "wave": "Before you try, I'll show you a wave. Watch me wave my antenna!",
+        "pushup": "Before you try, I'll show you a push-up. Watch my head dip down and rise again!",
+        "push_up": "Before you try, I'll show you a push-up. Watch my head dip down and rise again!",
+    }
+    normalized = action.strip().lower().replace("-", "_").replace(" ", "_")
+    return prompts.get(normalized, "Before you try, I'll show you how this exercise works. Watch me!")
+
+
+def get_round_prompt_speech(action: str, target_reps: int) -> str:
+    """Prompt the user to begin after the robot has finished its demonstration."""
+    return f"Now it's your turn! Show me {format_exercise_name(action, target_reps)}!"
+
+
 def get_rep_speech(rep_num: int, target_reps: int) -> str:
     """Generate real-time repetition counting feedback."""
     number_words = {

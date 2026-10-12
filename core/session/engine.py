@@ -24,8 +24,10 @@ from core.session.config import (
     SessionPlan,
     get_outro_speech,
     get_rep_speech,
+    get_round_announcement_speech,
     get_round_complete_speech,
-    get_round_intro_speech,
+    get_exercise_demo_speech,
+    get_round_prompt_speech,
     get_welcome_speech,
 )
 from core.session.gestures import (
@@ -33,6 +35,7 @@ from core.session.gestures import (
     ROUND_COMPLETE_GESTURE,
     ROUND_INTRO_GESTURE,
     WELCOME_GESTURE,
+    play_exercise_demo,
     play_gesture_with_speech,
 )
 
@@ -244,11 +247,10 @@ class SessionEngine:
         self._round_timed_out = False
         self.monitor.set_target_action(cur.action, callback=self._on_target_rep_detected)
 
-        intro_text = get_round_intro_speech(
+        announcement_text = get_round_announcement_speech(
             round_idx=self.current_round_idx + 1,
             total_rounds=len(self.plan.rounds),
             action=cur.action,
-            target_reps=cur.target_reps,
         )
         self._transition(
             SessionState.ROUND_INTRO,
@@ -258,9 +260,22 @@ class SessionEngine:
             mini=self.mini,
             gesture=ROUND_INTRO_GESTURE,
             voice=self.voice,
-            speech_text=intro_text,
+            speech_text=announcement_text,
             wait_for_voice=True,
         )
+
+        # Announce the demonstration first, wait for speech to finish, then move.
+        # The server pauses head/body following while the engine is in ROUND_INTRO,
+        # so the gesture cannot fight the live tracking controller.
+        demo_text = get_exercise_demo_speech(cur.action)
+        if self.voice is not None:
+            self.voice.speak(demo_text, non_blocking=False)
+        play_exercise_demo(self.mini, cur.action)
+
+        # Only invite the user to perform the movement after the robot has shown it.
+        prompt_text = get_round_prompt_speech(cur.action, cur.target_reps)
+        if self.voice is not None:
+            self.voice.speak(prompt_text, non_blocking=False)
 
         self.round_start_time = time.perf_counter()
         self._transition(
