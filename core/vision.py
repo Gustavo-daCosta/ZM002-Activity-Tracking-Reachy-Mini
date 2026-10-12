@@ -2,6 +2,9 @@
 
 import sys
 import urllib.request
+import json
+import time
+import threading
 from pathlib import Path
 
 import cv2
@@ -166,3 +169,84 @@ def downscale(frame, width):
         return frame
     height = round(frame.shape[0] * width / frame.shape[1])
     return cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+
+class RemoteMjpegSource:
+    """Read frames from a remote MJPEG stream exposed by the robot."""
+
+    def __init__(self, url: str):
+        self.url = url
+        self.cap = cv2.VideoCapture(url)
+        if not self.cap.isOpened():
+            raise RuntimeError(f"Could not open robot MJPEG stream: {url}")
+        print(f"Remote robot camera: {url}")
+
+    def read(self):
+        ok, frame = self.cap.read()
+        return frame if ok else None
+
+    def close(self):
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+
+
+def post_json(url: str, payload: dict, timeout: float = 0.25) -> None:
+    """Send one result packet to the robot; failures are logged but don't stop inference."""
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response.read()
+    except Exception as exc:
+        now = time.monotonic()
+        last = getattr(post_json, "_last_warning", 0.0)
+        if now - last >= 3.0:
+            print(f"Warning: could not send results to robot ({exc})")
+            post_json._last_warning = now
+
+
+class LatestJsonPoster:
+    """Send the newest inference state asynchronously so network latency cannot throttle FPS."""
+
+    def __init__(self, url: str, rate_hz: float = 20.0):
+        self.url = url
+        self.interval = 1.0 / max(1.0, rate_hz)
+        self._condition = threading.Condition()
+        self._payload = None
+        self._version = 0
+        self._closed = False
+        self._thread = threading.Thread(target=self._run, name="result-json-poster", daemon=True)
+        self._thread.start()
+
+    def update(self, payload: dict) -> None:
+        with self._condition:
+            self._payload = payload
+            self._version += 1
+            self._condition.notify()
+
+    def close(self) -> None:
+        with self._condition:
+            self._closed = True
+            self._condition.notify_all()
+        self._thread.join(timeout=1.0)
+
+    def _run(self) -> None:
+        sent_version = -1
+        while True:
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: self._closed or self._version != sent_version, timeout=self.interval
+                )
+                if self._closed:
+                    return
+                payload = self._payload
+                version = self._version
+            if payload is not None and version != sent_version:
+                post_json(self.url, payload, timeout=0.15)
+                sent_version = version
+            time.sleep(self.interval)
