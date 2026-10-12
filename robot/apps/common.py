@@ -4,13 +4,15 @@ import argparse
 import math
 import signal
 import time
+from contextlib import nullcontext
 
 from core.metrics import StageStats, format_summary
 from core.motion.antennas import NEUTRAL_ANTENNAS, TargetSender
 from core.pose_backends import BACKENDS, create_backend
 from core.stream import MjpegServer
 from core.tracking import CenteringFollower, body_center
-from core.vision import downscale, draw_coco_skeleton, put_text
+from core.vision import (RemoteMjpegSource, downscale, draw_coco_skeleton,
+                         LatestJsonPoster, put_text)
 
 FRAME_TIMEOUT_S = 10.0
 
@@ -173,6 +175,18 @@ def make_parser(doc):
     )
 
     parser.add_argument(
+        "--remote-camera",
+        default=None,
+        help="MJPEG URL for a camera stream served by the robot; runs inference on this computer",
+    )
+
+    parser.add_argument(
+        "--result-url",
+        default=None,
+        help="HTTP endpoint on the robot that accepts inference results as JSON",
+    )
+
+    parser.add_argument(
         "--seconds",
         type=float,
         default=0.0,
@@ -267,8 +281,11 @@ def annotate(
     panel,
     panel_lines,
 ):
-    """Draw the skeleton and the live panel on the frame."""
+    """Draw the skeleton and a compact, translucent status panel."""
 
+    import cv2
+
+    # Draw the pose skeleton first so the status panel stays readable.
     if result.keypoints is not None:
         draw_coco_skeleton(
             frame,
@@ -276,23 +293,84 @@ def annotate(
             min_score,
         )
 
-    put_text(
-        frame,
-        f"{model_name}  FPS {panel['fps']:.1f}",
-        1,
+    # Compact text settings.
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.45
+    thickness = 1
+
+    padding_x = 9
+    padding_y = 7
+    row_height = 19
+
+    # First row: model and FPS.
+    rows = [
+        (
+            f"{model_name}  |  FPS: {panel['fps']:.1f}",
+            (255, 255, 255),
+        )
+    ]
+
+    # Additional status and activity counters.
+    rows.extend(panel_lines)
+
+    # Calculate the required panel dimensions.
+    text_sizes = [
+        cv2.getTextSize(text, font, font_scale, thickness)[0]
+        for text, _ in rows
+    ]
+
+    text_width = max(
+        (size[0] for size in text_sizes),
+        default=0,
     )
 
-    for row, (text, color) in enumerate(
-        panel_lines,
-        start=2,
-    ):
-        put_text(
+    panel_width = text_width + 2 * padding_x
+    panel_height = (
+        len(rows) * row_height
+        + 2 * padding_y
+    )
+
+    # Keep the panel inside the image.
+    panel_width = min(panel_width, frame.shape[1])
+    panel_height = min(panel_height, frame.shape[0])
+
+    # Create a translucent black background.
+    overlay = frame.copy()
+
+    cv2.rectangle(
+        overlay,
+        (0, 0),
+        (panel_width, panel_height),
+        (0, 0, 0),
+        thickness=-1,
+    )
+
+    # Blend the black panel with the original frame.
+    alpha = 0.78
+
+    cv2.addWeighted(
+        overlay,
+        alpha,
+        frame,
+        1.0 - alpha,
+        0,
+        frame,
+    )
+
+    # Draw the text over the panel.
+    for index, (text, color) in enumerate(rows):
+        y = padding_y + (index + 1) * row_height - 3
+
+        cv2.putText(
             frame,
             text,
-            row,
+            (padding_x, y),
+            font,
+            font_scale,
             color,
+            thickness,
+            cv2.LINE_AA,
         )
-
 
 def wait_for_frames(
     source,
@@ -374,25 +452,26 @@ def run(
     stats = StageStats()
     recognized = []
 
-    with connect(args.host) as mini:
+    remote_mode = bool(args.remote_camera)
+    if remote_mode and not args.result_url:
+        raise SystemExit("--remote-camera requires --result-url so results can be sent back to the robot.")
+
+    mini_context = nullcontext(None) if remote_mode else connect(args.host)
+    with mini_context as mini:
         from reachy_mini.utils import create_head_pose
 
         sender = None
         monitor = None
         source = None
+        json_poster = None
 
         try:
-            # Direct camera access.
-            # The Reachy SDK media pipeline is NOT used.
-            source = Picamera2Source(
-                width=1920,
-                height=1080,
-            )
-
-            print(
-                "Direct camera: Picamera2/libcamera "
-                "1920x1080"
-            )
+            # Local robot mode owns Picamera2. Remote mode reads the robot's MJPEG stream.
+            if remote_mode:
+                source = RemoteMjpegSource(args.remote_camera)
+            else:
+                source = Picamera2Source(width=1920, height=1080)
+                print("Direct camera: Picamera2/libcamera 1920x1080")
 
             print("Waiting for camera frames...")
 
@@ -433,10 +512,14 @@ def run(
                     f"http://<this robot>:{stream.port}/"
                 )
 
-            mini.goto_target(
-                antennas=list(NEUTRAL_ANTENNAS),
-                duration=0.5,
-            )
+            if mini is not None:
+                mini.goto_target(
+                    antennas=list(NEUTRAL_ANTENNAS),
+                    duration=0.5,
+                )
+
+            if remote_mode:
+                json_poster = LatestJsonPoster(args.result_url, rate_hz=20.0)
 
             started = time.perf_counter()
             last_follow = started
@@ -444,11 +527,12 @@ def run(
 
             follow_debug = None
 
-            sender = TargetSender(
-                mini,
-                monitor.antennas,
-                rate_hz=args.rate,
-            ).start()
+            if mini is not None:
+                sender = TargetSender(
+                    mini,
+                    monitor.antennas,
+                    rate_hz=args.rate,
+                ).start()
 
             while True:
                 frame = source.read()
@@ -529,22 +613,22 @@ def run(
                         degrees=True,
                     )
 
-                    sender.body_yaw_deg = (
-                        follower.body_yaw
-                    )
+                    if sender is not None:
+                        sender.body_yaw_deg = follower.body_yaw
 
                     if (
                         now - last_follow_log
                         >= 1.0
                     ):
-                        joints, _ = (
-                            mini.get_current_joint_positions()
-                        )
+                        measured_body = follower.body_yaw
+                        if mini is not None:
+                            joints, _ = mini.get_current_joint_positions()
+                            measured_body = math.degrees(joints[0])
 
                         follow_debug = follow_line(
                             follower,
                             error,
-                            math.degrees(joints[0]),
+                            measured_body,
                         )
 
                         print(
@@ -562,7 +646,24 @@ def run(
                     ),
                 )
 
-                sender.head = head
+                if sender is not None:
+                    sender.head = head
+
+                if remote_mode:
+                    # JSON is intentionally self-describing; the robot executes the motion targets.
+                    antenna_targets = monitor.antennas(now)
+                    payload = {
+                        "timestamp": time.time(),
+                        "model": backend.name,
+                        "fps": stats.window_summary()["fps"],
+                        "action_counts": getattr(monitor, "counts", {}),
+                        "keypoints": (result.keypoints.tolist() if result.keypoints is not None else None),
+                        "antennas_rad": antenna_targets,
+                        "head": ({"yaw_deg": follower.yaw, "pitch_deg": follower.pitch} if follower is not None else None),
+                        "body_yaw_deg": (follower.body_yaw if follower is not None else None),
+                        "recognized_events": [label for _, label in recognized[-10:]],
+                    }
+                    json_poster.update(payload)
 
                 if (
                     args.window
@@ -623,20 +724,20 @@ def run(
             if source is not None:
                 source.close()
 
+            if json_poster is not None:
+                json_poster.close()
+
             if stream is not None:
                 stream.close()
 
-            print(
-                "Returning the antennas and the body "
-                "to neutral..."
-            )
-
-            mini.goto_target(
-                head=create_head_pose(),
-                antennas=list(NEUTRAL_ANTENNAS),
-                body_yaw=0.0,
-                duration=1.0,
-            )
+            if mini is not None:
+                print("Returning the antennas and the body to neutral...")
+                mini.goto_target(
+                    head=create_head_pose(),
+                    antennas=list(NEUTRAL_ANTENNAS),
+                    body_yaw=0.0,
+                    duration=1.0,
+                )
 
             backend.close()
 
@@ -645,7 +746,7 @@ def run(
 
                 cv2.destroyAllWindows()
 
-            if not args.no_sleep:
+            if mini is not None and not args.no_sleep:
                 mini.goto_sleep()
 
             print(
