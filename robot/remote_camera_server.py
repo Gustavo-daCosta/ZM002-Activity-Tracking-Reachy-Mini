@@ -6,8 +6,8 @@ Standard remote action-control mode (default):
 
 Remote session mode:
     python -m robot.remote_camera_server --host localhost --session --width 192 --height 108
-    Laptop streams MoveNet keypoints to /result; the SessionEngine, speech and robot
-    gestures remain on the Reachy Mini.
+    Laptop streams MoveNet keypoints to /result; the SessionEngine, speech, gestures and
+    torso-centering head/body tracking remain on the Reachy Mini. Following is enabled by default.
 
 Endpoints:
     http://<robot-ip>:8765/stream.mjpg  camera MJPEG stream
@@ -27,6 +27,7 @@ import numpy as np
 
 from core.motion.antennas import NEUTRAL_ANTENNAS
 from core.stream import MjpegServer
+from core.tracking import CenteringFollower, body_center
 from robot.apps.common import Picamera2Source, connect
 
 
@@ -46,6 +47,26 @@ def main():
     parser.add_argument("--reps-per-round", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--min-score", type=float, default=0.3)
+    parser.add_argument(
+        "--follow",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="during session mode, track the torso with the head/body (default: enabled; use --no-follow to disable)",
+    )
+    parser.add_argument("--follow-gain", type=float, default=120.0,
+                        help="head tracking speed in degrees/s per image error")
+    parser.add_argument("--max-yaw", type=float, default=80.0,
+                        help="maximum total gaze yaw in degrees")
+    parser.add_argument("--max-pitch", type=float, default=20.0,
+                        help="maximum head pitch in degrees")
+    parser.add_argument("--deadzone", type=float, default=0.05,
+                        help="ignore smaller normalized image errors")
+    parser.add_argument("--max-head-offset", type=float, default=45.0,
+                        help="maximum head yaw offset from body yaw in degrees")
+    parser.add_argument("--body-gain", type=float, default=1.5,
+                        help="how quickly the body follows gaze (0 disables body rotation)")
+    parser.add_argument("--max-body-yaw", type=float, default=110.0,
+                        help="maximum body rotation in degrees")
     parser.add_argument("--voice-model", default="en_US-lessac-medium")
     args = parser.parse_args()
 
@@ -56,7 +77,7 @@ def main():
 
     latest = {"received_at": 0.0, "payload": None, "version": 0}
     lock = threading.Lock()
-    runtime = {"engine": None, "session_enabled": args.session}
+    runtime = {"engine": None, "session_enabled": args.session, "follower": None}
 
     class ResultHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -72,10 +93,19 @@ def main():
             body_data = {
                 "status": "ok",
                 "session_mode": args.session,
+                "head_following": bool(args.session and args.follow),
                 "inference_connected": payload is not None and now - received_at < 1.0,
                 "model": payload.get("model") if isinstance(payload, dict) else None,
                 "inference_fps": payload.get("fps") if isinstance(payload, dict) else None,
             }
+
+            follower_status = runtime.get("follower")
+            if follower_status is not None:
+                body_data.update({
+                    "follow_head_yaw_deg": round(follower_status.yaw, 1),
+                    "follow_head_pitch_deg": round(follower_status.pitch, 1),
+                    "follow_body_yaw_deg": round(follower_status.body_yaw, 1),
+                })
 
             engine = runtime["engine"]
             if args.session and engine is not None:
@@ -137,6 +167,9 @@ def main():
     last_processed_version = 0
     last_session_update = time.perf_counter()
     last_status = 0.0
+    follower = None
+    last_follow_update = time.perf_counter()
+    follow_was_active = False
 
     try:
         with connect(args.host) as mini:
@@ -152,6 +185,7 @@ def main():
                 from core.motion.voice import ActionVoice
                 from core.session.config import SessionPlan
                 from core.session.engine import SessionEngine, SessionState
+                from reachy_mini.utils import create_head_pose
 
                 detector = ActionDetector(DEFAULT_ACTION_MODEL)
                 if not detector.available:
@@ -177,6 +211,28 @@ def main():
                 )
                 engine = SessionEngine(plan=plan, monitor=monitor, voice=voice, mini=mini)
                 runtime["engine"] = engine
+
+                if args.follow:
+                    follower = CenteringFollower(
+                        gain=args.follow_gain,
+                        max_yaw=args.max_yaw,
+                        max_pitch=args.max_pitch,
+                        deadzone=args.deadzone,
+                        return_speed=args.follow_gain / 6.0,
+                        mirrored=False,
+                        body_gain=args.body_gain,
+                        max_head_offset=args.max_head_offset,
+                        max_body_yaw=args.max_body_yaw,
+                    )
+                    runtime["follower"] = follower
+                    print(
+                        "Head/body tracking ENABLED during active exercise rounds "
+                        f"(gain={args.follow_gain:.0f}, body gain={args.body_gain:.2f}, "
+                        f"limits: gaze ±{args.max_yaw:.0f}°, body ±{args.max_body_yaw:.0f}°)."
+                    )
+                else:
+                    print("Head/body tracking disabled (--no-follow).")
+
                 print(
                     f"REMOTE SESSION MODE: {len(plan.rounds)} rounds; "
                     f"{plan.reps_per_round} reps/round; timeout={args.timeout:.1f}s"
@@ -203,22 +259,26 @@ def main():
                 fresh = payload is not None and now_mono - received_at < 1.0
 
                 if args.session:
+                    # Parse the latest COCO-17 pose whenever the control loop runs. The
+                    # SessionEngine is updated only on fresh POSTs, while the tracking
+                    # controller can run smoothly using the most recent pose between POSTs.
+                    keypoints = None
+                    if fresh and isinstance(payload, dict):
+                        raw_keypoints = payload.get("keypoints")
+                        if raw_keypoints is not None:
+                            try:
+                                keypoints_array = np.asarray(raw_keypoints, dtype=np.float32)
+                                if keypoints_array.shape == (17, 3):
+                                    keypoints = keypoints_array
+                                else:
+                                    print(
+                                        "Ignoring malformed keypoints shape:",
+                                        keypoints_array.shape,
+                                    )
+                            except (TypeError, ValueError):
+                                print("Ignoring malformed keypoints payload")
+
                     if version != last_processed_version:
-                        keypoints = None
-                        if fresh and isinstance(payload, dict):
-                            raw_keypoints = payload.get("keypoints")
-                            if raw_keypoints is not None:
-                                try:
-                                    keypoints_array = np.asarray(raw_keypoints, dtype=np.float32)
-                                    if keypoints_array.shape == (17, 3):
-                                        keypoints = keypoints_array
-                                    else:
-                                        print(
-                                            "Ignoring malformed keypoints shape:",
-                                            keypoints_array.shape,
-                                        )
-                                except (TypeError, ValueError):
-                                    print("Ignoring malformed keypoints payload")
                         if engine.state == SessionState.IDLE:
                             if keypoints is not None:
                                 print("Valid pose received from laptop; starting workout session.")
@@ -235,6 +295,31 @@ def main():
                         engine.update(now_perf, None)
                         last_session_update = now_perf
 
+                    # Follow the torso only during ACTIVE exercise rounds. Pausing during
+                    # introductions/feedback/outro prevents set_target() from fighting the
+                    # SessionEngine's expressive goto_target() gestures.
+                    if follower is not None:
+                        if engine.state == SessionState.ACTIVE:
+                            target = body_center(keypoints, args.min_score) if keypoints is not None else None
+                            error = (target[0] - 0.5, target[1] - 0.5) if target else None
+                            dt = min(max(now_perf - last_follow_update, 0.0), 0.1)
+                            yaw, pitch = follower.update(error, dt)
+                            mini.set_target(
+                                head=create_head_pose(yaw=yaw, pitch=pitch, degrees=True),
+                                body_yaw=math.radians(follower.body_yaw),
+                            )
+                            follow_was_active = True
+                        else:
+                            if follow_was_active:
+                                # Session gestures return the head/body to neutral. Reset the
+                                # controller state so the next round resumes from that pose.
+                                follower.gaze_yaw = 0.0
+                                follower.body_yaw = 0.0
+                                follower.yaw = 0.0
+                                follower.pitch = 0.0
+                            follow_was_active = False
+                        last_follow_update = now_perf
+
                     if now_mono - last_status >= 2.0:
                         cur = engine.current_round
                         if fresh and isinstance(payload, dict):
@@ -245,6 +330,11 @@ def main():
                                 f"round={engine.current_round_idx + 1}/{len(engine.plan.rounds)}; "
                                 f"reps={engine.reps_this_round}/"
                                 f"{cur.target_reps if cur else 0}"
+                                + (
+                                    f"; follow=head {follower.yaw:+.0f}° / body {follower.body_yaw:+.0f}°"
+                                    if follower is not None and engine.state == SessionState.ACTIVE
+                                    else ""
+                                )
                             )
                         else:
                             print(

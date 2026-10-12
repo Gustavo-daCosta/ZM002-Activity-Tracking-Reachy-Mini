@@ -76,7 +76,7 @@ source ~/camera_env/bin/activate
 python -m robot.remote_camera_server \
   --host localhost \
   --width 192 --height 108 \
-  --session \
+  --session --follow \
   --rounds wave \
   --reps-per-round 1 \
   --timeout 30
@@ -98,6 +98,14 @@ The workout starts when the robot receives a valid person pose. `--rounds wave` 
 smoke test; after it works, replace it with `--rounds squat,clapping,jumping_jacks,wave` to test all
 configured rounds. Check connectivity and session state at `http://10.42.0.66:8766/status` or with
 `curl http://10.42.0.66:8766/health`. Stop the laptop client first with Ctrl+C, then stop the server.
+
+**Head/body tracking is enabled by default during active exercise rounds.** The robot uses the
+laptop's COCO keypoints and the existing `CenteringFollower` controller to keep the torso near the
+centre of the frame, moving the head and (when needed) rotating the body. Tracking pauses during the
+session's spoken introductions, celebration gestures and outro, so it does not fight those movements.
+`/status` reports `head_following` and the current head/body tracking angles. Add `--no-follow` to the
+server command to disable it. The controller can be tuned with `--follow-gain`, `--deadzone`,
+`--max-yaw`, `--max-pitch`, `--max-head-offset`, `--body-gain` and `--max-body-yaw`.
 
 The camera sends 192x108 frames to preserve the 16:9 image ratio while matching MoveNet's 192-pixel
 input width; the model's existing letterbox step pads the image to 192x192. This avoids sending 1280x720
