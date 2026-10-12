@@ -1,6 +1,6 @@
-# Training and dataset work: this Mac only. Installed on top of requirements/sim.txt.
+# Training and dataset work on this Mac. Installed on top of requirements/sim.txt.
 #
-# The robot venv deliberately does NOT get scikit-learn: it runs the numpy `.npz` forest export instead
-# (core/motion/forest.py), which is ~30 ms per evaluation cheaper on the CM4. Nothing in core/ imports
-# sklearn.
+# The robot venv also has scikit-learn now, only for the coach's on-device training (requirements/robot.txt);
+# recognition still runs the numpy `.npz` forest export (core/motion/forest.py), ~30 ms per evaluation
+# cheaper on the CM4, and nothing in core/ imports sklearn.
 scikit-learn==1.9.1

@@ -14,3 +14,7 @@ opencv-python-headless==4.12.0.88
 # Neural text-to-speech for natural robot voice.
 piper-tts>=1.8.0
 sounddevice>=0.5.0
+# The coach (robot/apps/coach.py) trains the exercise model on the robot, in a subprocess running
+# training/train_exercises.py; recognition itself still runs the numpy `.npz` export. Same pin as
+# requirements/training.txt (aarch64 cp312 wheel).
+scikit-learn==1.9.1

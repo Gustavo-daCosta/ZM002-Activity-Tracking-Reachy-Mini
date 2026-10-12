@@ -49,3 +49,16 @@ sample the wave smoothly and the movement looked stepped. Measured on the robot:
 The practical consequence of the first row is the whole reason `core/pose_backends/` exists: the robot and
 this Mac cannot run the same pose model, so the backend is selected per environment behind one interface.
 
+## Coach: the robot learns a child's exercises
+
+```bash
+robot/deploy.sh   # ships training/, the exercise model and the group's recordings (~/coach_data/)
+ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
+```
+
+The robot introduces itself, guides the child through about 4.5 minutes of recording (squats, arm raises,
+side bends), trains on the robot's own CPU (scikit-learn in a niced subprocess; the head keeps following),
+then plays a workout with the new model. Watch the camera with the HUD at `http://<robot>:8080/`.
+Recordings (keypoints only) and models stay in `~/coach_data/` on the robot; delete a child's data with
+`rm -r ~/coach_data/recordings/<name> ~/coach_data/models/<name>.*`. `--workout-only` replays the workout
+with a saved model.

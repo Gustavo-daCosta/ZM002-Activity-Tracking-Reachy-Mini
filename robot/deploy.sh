@@ -44,15 +44,23 @@ ssh "$HOST" 'cat ~/VERSION.txt; python3 -V; df -h / | tail -1; free -h | head -2
 
 step "2. Sync code and models to $REMOTE"
 ssh "$HOST" "mkdir -p $REMOTE/core/models"
-# Whole directories, so a new module cannot be left behind; training/ needs scikit-learn and stays out.
-# COPYFILE_DISABLE keeps macOS from adding "._*" files. Models are synced separately below.
+# Whole directories, so a new module cannot be left behind. training/ goes too: the coach trains the
+# exercise model on the robot (its recorded data stays here). COPYFILE_DISABLE keeps macOS from adding
+# "._*" files. Models are synced separately below.
 COPYFILE_DISABLE=1 tar czf - -C "$REPO" \
   --exclude '__pycache__' --exclude '*.pyc' --exclude 'core/models' --exclude 'robot/wheels' \
-  core robot requirements/robot.txt \
+  --exclude 'training/data' \
+  core robot training requirements/robot.txt \
   | ssh "$HOST" "tar xzf - -C $REMOTE"
 # Only the models the robot needs: int8 MoveNet and the numpy forests (the other pose models stay on the Mac).
-COPYFILE_DISABLE=1 tar czf - -C "$REPO/core/models" movenet-lightning-int8.tflite wave_classifier_ntu.npz action_classifier.npz \
+COPYFILE_DISABLE=1 tar czf - -C "$REPO/core/models" movenet-lightning-int8.tflite wave_classifier_ntu.npz action_classifier.npz exercise_classifier.npz \
   | ssh "$HOST" "tar xzf - -C $REMOTE/core/models"
+# The group's exercise recordings (keypoints only, no mp4) seed the coach's training pool. They go to
+# ~/coach_data, outside the app folder, where the children's recordings also live: a deploy adds or
+# refreshes the group's files and never deletes anything there.
+ssh "$HOST" "mkdir -p ~/coach_data/recordings ~/coach_data/models"
+COPYFILE_DISABLE=1 tar czf - -C "$REPO/collect/recordings" --exclude '*.mp4' . \
+  | ssh "$HOST" "tar xzf - -C ~/coach_data/recordings"
 ssh "$HOST" "ls -la $REMOTE $REMOTE/core/models | head -30"
 
 if [ "$CODE_ONLY" = 1 ]; then

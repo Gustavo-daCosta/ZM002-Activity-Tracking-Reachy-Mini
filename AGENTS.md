@@ -74,28 +74,29 @@ these boundaries without checking the consequence named on each one.
 core/       reused by BOTH the simulation and the robot
 robot/      needs the physical Reachy Mini
 sim/        needs only this Mac (MuJoCo + webcam)
-training/   needs only this Mac, and needs scikit-learn
+training/   needs scikit-learn (this Mac; on the robot only for the coach's on-device training)
 tools/      developer utilities (datasets, SSH setup, API reference)
 ```
 
 - `core/` — pose backends, motion recognition (`core/motion/`: window, features, forest, wave, actions,
-  antennas), vision, tracking, metrics and the tracked `.npz` models. It imports nothing from `robot/`, `sim/` or `training/`, and that direction must
+  antennas), the coach (`core/coach/`: guided recording, trainer subprocess, phase machine), vision,
+  tracking, metrics and the tracked `.npz` models. It imports nothing from `robot/`, `sim/` or `training/`, and that direction must
   stay one-way: anything in `core/` is code you are also shipping to a Raspberry Pi CM4.
 - `robot/` — `connect.py` (`ROBOT_IP`, `resolve_host()`, `connect_robot(media, sleep_on_exit, needs)`,
   `RobotNotReady`), `preflight.py` (state check/fix CLI, stdlib only), `apps/` (runnable entry points:
   antennas, explore, head_tracking, head_tracking_video, look_at_click, wave_antennas,
-  action_recognition; the last two share `apps/common.py`), `deploy.sh` and `demo.sh`. Run an app with
+  action_recognition, coach; wave_antennas and action_recognition share `apps/common.py`), `deploy.sh` and `demo.sh`. Run an app with
   `reachy_mini_env/bin/python -m robot.apps.<name>`; new ones follow the same pattern.
-- `sim/` — `start.sh` plus `body_tracking` and `camera_check`. No robot and no
+- `sim/` — `start.sh` plus `body_tracking`, `coach` and `camera_check`. No robot and no
   preflight: the daemon runs on `localhost`. `body_tracking --model
   blazepose-lite|blazepose-full|vitpose-s` follows the torso and compares pose models; `--detect-wave` and
   `--detect-actions` add recognition with the antennas answering. The webcam is selected **by name**
   (`--camera FaceTime`, default) because OpenCV indices swap when an iPhone joins as a Continuity Camera —
   never pass a numeric index without checking `python -m sim.camera_check --list`.
-- `training/` — `record.py`, `data.py` (recorded sessions + public dataset loaders), `train_wave.py` and
-  `train_actions.py`. **This is the only part that needs scikit-learn, and the robot venv deliberately
-  does not have it.** `robot/deploy.sh` ships `core/` and
-  `robot/` and therefore excludes this directory by construction. If you find yourself wanting to import
+- `training/` — `record.py`, `data.py` (recorded sessions + public dataset loaders), `train_wave.py`,
+  `train_actions.py` and `train_exercises.py`. It needs scikit-learn. The robot venv has it too, **only** so
+  the coach (`robot/apps/coach.py`) can run `train_exercises` in a subprocess; `robot/deploy.sh` ships
+  `training/` for that. Recognition never imports sklearn. If you find yourself wanting to import
   `training.*` from `core/`, that is the boundary telling you the code belongs somewhere else.
 - `requirements/` — `sim.txt` (mediapipe pinned to 0.10.35; 1.0.1 aborts on macOS arm64), `robot.txt`
   (aarch64: mediapipe must be **1.0.1**, but BlazePose cannot run on this CPU at all — see below) and
@@ -133,10 +134,11 @@ Read `docs/action-recognition.md` before promising any of this to an audience. T
 ## Robot deployment
 
 `robot/deploy.sh` creates the venv `~/wave_env` and puts the code in `~/wave_app`, **never touching
-`/venvs/*`**. It ships whole directories (`core/`, `robot/`), so a new module cannot be silently left
+`/venvs/*`**. It ships whole directories (`core/`, `robot/`, `training/`), so a new module cannot be silently left
 behind. BlazePose/mediapipe is unusable on this robot: the only aarch64 binaries require AES instructions
-the Cortex-A72 lacks, so pose runs on MoveNet int8 through LiteRT (~34 ms/frame). The classifier runs from
-the `.npz` export because the robot has no scikit-learn.
+the Cortex-A72 lacks, so pose runs on MoveNet int8 through LiteRT (~34 ms/frame). Classifiers run from the
+`.npz` export (faster on the CM4); scikit-learn is there only for the coach's on-device training. Children's
+recordings and models live in `~/coach_data/`, never in `~/wave_app`.
 
 ## Skills — load when relevant
 
