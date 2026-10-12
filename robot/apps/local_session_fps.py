@@ -193,66 +193,65 @@ def main() -> None:
     source = None
     voice = None
     engine = None
-    monitor = None
 
-    print("Connecting to Reachy Mini...", flush=True)
     try:
+        # Initialize all expensive components BEFORE opening the Reachy SDK
+        # websocket. Model download, camera setup and warm-up can take long
+        # enough that a newly opened idle robot connection may be dropped.
+        print("Loading MoveNet Lightning INT8 with LiteRT/TFLite on the robot...", flush=True)
+        backend = create_backend("movenet-tflite")
+
+        detector = ActionDetector(activity_model)
+        if not detector.available:
+            raise SystemExit(f"Could not load activity model: {activity_model}")
+
+        print(f"Activity classifier: {activity_model}", flush=True)
+        print("Activity classes: " + ", ".join(detector.classes), flush=True)
+        missing = sorted(set(exercises) - set(detector.classes))
+        if missing:
+            raise SystemExit(
+                "The activity model does not contain the requested round(s): "
+                f"{', '.join(missing)}. Available classes: {', '.join(detector.classes)}"
+            )
+
+        # Use the same source resolution as the remote laptop-streaming setup.
+        source = Picamera2Source(
+            width=args.camera_width,
+            height=args.camera_height,
+        )
+        first_frame = wait_for_frames(source)
+        if first_frame is None:
+            raise SystemExit("No frames received from Picamera2")
+
+        frame = downscale(first_frame, args.width)
+        aspect_ratio = frame.shape[1] / frame.shape[0]
+        min_score = backend.default_min_score
+        print(
+            f"Direct camera: {frame.shape[1]}x{frame.shape[0]} "
+            f"(configured {args.camera_width}x{args.camera_height})",
+            flush=True,
+        )
+        print(
+            f"Warming up MoveNet ({args.warmup} runs; excluded from FPS)...",
+            flush=True,
+        )
+        for _ in range(args.warmup):
+            backend.infer(frame)
+
+        monitor = ActionMonitor(
+            aspect_ratio=aspect_ratio,
+            min_score=min_score,
+            detector=detector,
+            voice=False,
+        )
+        # Piper/model initialization can also take time, so do it before connecting.
+        voice = ActionVoice(voice_model=args.voice_model)
+
+        from reachy_mini.utils import create_head_pose
+
+        print("Camera/model ready; connecting to Reachy Mini now...", flush=True)
         with connect("localhost") as mini:
             try:
-                print(
-                    "Loading MoveNet Lightning INT8 with LiteRT/TFLite on the robot...",
-                    flush=True,
-                )
-                backend = create_backend("movenet-tflite")
-
-                detector = ActionDetector(activity_model)
-                if not detector.available:
-                    raise SystemExit(f"Could not load activity model: {activity_model}")
-
-                print(f"Activity classifier: {activity_model}", flush=True)
-                print("Activity classes: " + ", ".join(detector.classes), flush=True)
-                missing = sorted(set(exercises) - set(detector.classes))
-                if missing:
-                    raise SystemExit(
-                        "The activity model does not contain the requested round(s): "
-                        f"{', '.join(missing)}. Available classes: {', '.join(detector.classes)}"
-                    )
-
-                # Use the same 192x108 source dimensions as the laptop MJPEG stream
-                # to make the comparison as close as possible and avoid a large frame.
-                source = Picamera2Source(
-                    width=args.camera_width,
-                    height=args.camera_height,
-                )
-                first_frame = wait_for_frames(source)
-                if first_frame is None:
-                    raise SystemExit("No frames received from Picamera2")
-
-                frame = downscale(first_frame, args.width)
-                aspect_ratio = frame.shape[1] / frame.shape[0]
-                min_score = backend.default_min_score
-                print(
-                    f"Direct camera: {frame.shape[1]}x{frame.shape[0]} "
-                    f"(configured {args.camera_width}x{args.camera_height})",
-                    flush=True,
-                )
-                print(
-                    f"Warming up MoveNet ({args.warmup} runs; excluded from FPS)...",
-                    flush=True,
-                )
-                for _ in range(args.warmup):
-                    backend.infer(frame)
-
-                monitor = ActionMonitor(
-                    aspect_ratio=aspect_ratio,
-                    min_score=min_score,
-                    detector=detector,
-                    voice=False,
-                )
-                voice = ActionVoice(voice_model=args.voice_model)
-
-                from reachy_mini.utils import create_head_pose
-
                 mini.goto_target(
                     head=create_head_pose(),
                     antennas=list(NEUTRAL_ANTENNAS),
@@ -295,63 +294,60 @@ def main() -> None:
                 last_report = started
                 interval_frames = 0
 
-                try:
-                    while not engine.is_finished:
-                        raw_frame = source.read()
-                        if raw_frame is None:
-                            time.sleep(0.005)
-                            continue
+                while not engine.is_finished:
+                    raw_frame = source.read()
+                    if raw_frame is None:
+                        time.sleep(0.005)
+                        continue
 
-                        frame = downscale(raw_frame, args.width)
-                        infer_start = time.perf_counter()
-                        result = backend.infer(frame)
-                        now = time.perf_counter()
-                        pose_elapsed_ms = result.timings.get(
-                            "pose",
-                            (now - infer_start) * 1000.0,
-                        )
+                    frame = downscale(raw_frame, args.width)
+                    infer_start = time.perf_counter()
+                    result = backend.infer(frame)
+                    now = time.perf_counter()
+                    pose_elapsed_ms = result.timings.get(
+                        "pose",
+                        (now - infer_start) * 1000.0,
+                    )
 
-                        # Always update the session, including frames with no keypoints,
-                        # so round timeouts still elapse if the person leaves the frame.
-                        session_start = time.perf_counter()
-                        engine.update(now, result.keypoints)
-                        session_elapsed_ms = (time.perf_counter() - session_start) * 1000.0
+                    # Update the session on every captured frame, including frames
+                    # where no keypoints are detected, so timeouts still advance.
+                    session_start = time.perf_counter()
+                    engine.update(now, result.keypoints)
+                    session_elapsed_ms = (time.perf_counter() - session_start) * 1000.0
 
-                        frame_count += 1
-                        interval_frames += 1
-                        detected_count += int(result.keypoints is not None)
-                        pose_times.append(float(pose_elapsed_ms))
-                        session_times.append(session_elapsed_ms)
+                    frame_count += 1
+                    interval_frames += 1
+                    detected_count += int(result.keypoints is not None)
+                    pose_times.append(float(pose_elapsed_ms))
+                    session_times.append(session_elapsed_ms)
 
-                        report_now = time.perf_counter()
-                        interval_elapsed = report_now - last_report
-                        if interval_elapsed >= args.report_interval:
-                            interval_fps = interval_frames / interval_elapsed
-                            average_fps = frame_count / max(report_now - started, 1e-9)
-                            current_round = engine.current_round
-                            if current_round is None:
-                                exercise_info = "exercise=complete"
-                            else:
-                                exercise_info = (
-                                    f"exercise={current_round.action}; "
-                                    f"reps={engine.reps_this_round}/{current_round.target_reps}"
-                                )
-                            print(
-                                f"FPS={interval_fps:.1f}; average={average_fps:.1f}; "
-                                f"frames={frame_count}; pose={pose_elapsed_ms:.1f}ms; "
-                                f"keypoints={'yes' if result.keypoints is not None else 'none'}; "
-                                f"state={engine.state.name}; {exercise_info}",
-                                flush=True,
+                    report_now = time.perf_counter()
+                    interval_elapsed = report_now - last_report
+                    if interval_elapsed >= args.report_interval:
+                        interval_fps = interval_frames / interval_elapsed
+                        average_fps = frame_count / max(report_now - started, 1e-9)
+                        current_round = engine.current_round
+                        if current_round is None:
+                            exercise_info = "exercise=complete"
+                        else:
+                            exercise_info = (
+                                f"exercise={current_round.action}; "
+                                f"reps={engine.reps_this_round}/{current_round.target_reps}"
                             )
-                            last_report = report_now
-                            interval_frames = 0
+                        print(
+                            f"FPS={interval_fps:.1f}; average={average_fps:.1f}; "
+                            f"frames={frame_count}; pose={pose_elapsed_ms:.1f}ms; "
+                            f"keypoints={'yes' if result.keypoints is not None else 'none'}; "
+                            f"state={engine.state.name}; {exercise_info}",
+                            flush=True,
+                        )
+                        last_report = report_now
+                        interval_frames = 0
 
-                except KeyboardInterrupt:
-                    print("\nInterrupted by user; calculating FPS summary...", flush=True)
-
+            except KeyboardInterrupt:
+                print("\nInterrupted by user; calculating FPS summary...", flush=True)
             finally:
-                # Capture the benchmark end time before camera/model/robot cleanup so
-                # shutdown and sleep movement do not distort the reported average FPS.
+                # Freeze measurement before shutdown motion and resource cleanup.
                 if started is not None:
                     ended = time.perf_counter()
 
@@ -360,25 +356,8 @@ def main() -> None:
                         engine.close()
                     except Exception:
                         pass
-                if source is not None:
-                    try:
-                        source.close()
-                    except Exception:
-                        pass
-                if backend is not None:
-                    try:
-                        backend.close()
-                    except Exception:
-                        pass
-                if voice is not None:
-                    try:
-                        voice.close()
-                    except Exception:
-                        pass
 
                 try:
-                    from reachy_mini.utils import create_head_pose
-
                     mini.goto_target(
                         head=create_head_pose(),
                         antennas=list(NEUTRAL_ANTENNAS),
@@ -394,6 +373,23 @@ def main() -> None:
                     )
 
     finally:
+        # Release camera/model/audio resources regardless of connection outcome.
+        if source is not None:
+            try:
+                source.close()
+            except Exception:
+                pass
+        if backend is not None:
+            try:
+                backend.close()
+            except Exception:
+                pass
+        if voice is not None:
+            try:
+                voice.close()
+            except Exception:
+                pass
+
         _print_summary(
             started,
             ended,
