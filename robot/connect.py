@@ -7,7 +7,7 @@ The robot and this computer must be on the same Wi-Fi network ("Reachy Mini"). R
 import os
 from contextlib import contextmanager
 
-ROBOT_IP = "192.168.137.171"
+ROBOT_IP = "10.42.0.66"
 MDNS_HOST = "reachy-mini.local"
 API_PORT = 8000
 

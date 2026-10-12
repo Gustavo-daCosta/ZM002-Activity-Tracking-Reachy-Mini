@@ -1,13 +1,19 @@
 """The coach on the robot: Reachy Mini learns a child's exercises on its own CPU, then plays the workout.
 
 On the robot (camera through Picamera2, view the camera at http://<robot>:8080/):
-    ssh -t reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
+    ssh -t reachy 'cd ~/wave_app && ~/camera_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080 \
+        --train-python ~/wave_env/bin/python'
+
+Two venvs: Picamera2's libcamera bindings exist only for the system Python 3.13, so the app runs in
+~/camera_env (system site packages); scikit-learn lives in ~/wave_env, which only the training subprocess
+uses.
 
 Data stays on the robot: recordings (keypoints only) in ~/coach_data/recordings/<name>/, models in
 ~/coach_data/models/<name>.npz. robot/deploy.sh copies the group's recordings there. Ctrl+C stops; what was
 recorded is kept. Deployment: robot/deploy.sh.
 """
 
+import sys
 import time
 from pathlib import Path
 
@@ -37,6 +43,8 @@ def parse_args(argv=None):
     parser.add_argument("--recordings", default=str(DATA / "recordings"), help="recordings folder")
     parser.add_argument("--models", default=str(DATA / "models"), help="per-child models")
     parser.add_argument("--voice-model", default=DEFAULT_VOICE, help="Piper voice")
+    parser.add_argument("--train-python", default=sys.executable,
+                        help="Python with scikit-learn for the training subprocess (default: this one)")
     return parser.parse_args(argv)
 
 
@@ -80,7 +88,7 @@ def main():
         voice = ActionVoice(voice_model=args.voice_model)
         recorder = GuidedRecorder(first.shape[1] / first.shape[0], min_score, args.rounds, args.round_seconds,
                                   min_visible=args.min_visible, min_motion=args.min_motion)
-        trainer = Trainer(args.recordings, model_out)
+        trainer = Trainer(args.recordings, model_out, python=args.train_python)
         mini.goto_target(head=create_head_pose(), antennas=list(NEUTRAL_ANTENNAS), body_yaw=0.0, duration=1.0)
         pipeline = Pipeline(mini, voice, name, recorder, trainer, args.recordings, backend.name, follow,
                             workout_reps=args.reps, workout_model=model_out if args.workout_only else None,

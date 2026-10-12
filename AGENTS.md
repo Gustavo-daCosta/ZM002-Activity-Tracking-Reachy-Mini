@@ -10,7 +10,7 @@ talk to the user in **Portuguese**; write code, comments, commits and docs in **
 ## The robot
 
 - Reachy Mini **wireless** (Raspberry Pi CM4, ReachyMiniOS v0.2.3), daemon + SDK `reachy_mini` **1.10.0** (keep equal).
-- Host: `192.168.137.171` — **may change** (DHCP). Fallback `reachy-mini.local`. Override: `REACHY_HOST=<ip>`.
+- Host: `10.42.0.66` — **may change** (DHCP). Fallback `reachy-mini.local`. Override: `REACHY_HOST=<ip>`.
   The IP lives only in `robot/connect.py` and in `HostName` of `Host reachy` in `~/.ssh/config`.
 - Robot and this computer **must be on the same Wi-Fi** (currently `Reachy Mini`).
 - REST API: `http://<host>:8000` (Swagger `/docs`). SSH: `ssh reachy '<cmd>'` (user `pollen`, password `root`

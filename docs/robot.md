@@ -53,12 +53,14 @@ this Mac cannot run the same pose model, so the backend is selected per environm
 
 ```bash
 robot/deploy.sh   # ships training/, the exercise model and the group's recordings (~/coach_data/)
-ssh -t reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080'
+ssh -t reachy 'cd ~/wave_app && ~/camera_env/bin/python -m robot.apps.coach --name Ana --stream-port 8080 \
+    --train-python ~/wave_env/bin/python'
 ```
 
 The robot introduces itself, guides the child through about 4.5 minutes of recording (squats, arm raises,
 side bends), trains on the robot's own CPU (scikit-learn in a niced subprocess; the head keeps following),
-then plays a workout with the new model. Watch the camera with the HUD at `http://<robot>:8080/`.
+then plays a workout with the new model. It runs in `~/camera_env` (Picamera2 needs the system Python
+3.13); only the training subprocess uses `~/wave_env`, which has scikit-learn. Watch the camera with the HUD at `http://<robot>:8080/`.
 Recordings (keypoints only) and models stay in `~/coach_data/` on the robot; delete a child's data with
 `rm -r ~/coach_data/recordings/<name> ~/coach_data/models/<name>.*`. `--workout-only` replays the workout
 with a saved model.
