@@ -60,6 +60,7 @@ class TargetSender:
     Attributes:
         head: Latest head pose set by the vision loop (None = do not move the head).
         body_yaw_deg: Body rotation in degrees (None = leave the body where it is).
+        paused_until: `time.perf_counter()` time before which nothing is sent (a gesture owns the head).
     """
 
     def __init__(self, mini, antennas, rate_hz=50.0):
@@ -75,6 +76,7 @@ class TargetSender:
         self._interval = 1.0 / rate_hz
         self.head = None
         self.body_yaw_deg = None
+        self.paused_until = 0.0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="target-sender", daemon=True)
 
@@ -91,7 +93,8 @@ class TargetSender:
     def _run(self):
         while not self._stop.is_set():
             now = time.perf_counter()
-            body = self.body_yaw_deg
-            self._mini.set_target(head=self.head, antennas=self._antennas(now),
-                                  body_yaw=None if body is None else math.radians(body))
+            if now >= self.paused_until:
+                body = self.body_yaw_deg
+                self._mini.set_target(head=self.head, antennas=self._antennas(now),
+                                      body_yaw=None if body is None else math.radians(body))
             self._stop.wait(max(0.0, self._interval - (time.perf_counter() - now)))
