@@ -1,0 +1,73 @@
+\section{Introduction}
+
+\subsection{Background}
+
+The Research Centre for Data Intelligence conducts applied research into, among
+other themes, smart assistants and human-computer interaction. This project
+was carried out in the context of the centre's ``Measuring at Home with AI''
+research direction. The long-term motivation for that research is to make
+exercise monitoring more accessible to children with juvenile dermatomyositis
+(JDM). These children currently perform exercises related to the Childhood
+Myositis Assessment Scale (CMAS) under the supervision of specialists at the
+Wilhelmina Children's Hospital (WKZ). Repeated travel to the hospital is
+burdensome for children and their families, which creates an opportunity for
+technologies that can support monitoring at home.
+
+Automated home monitoring must do more than record a video. It must detect a
+person, estimate body movement from visual input, distinguish between
+activities, and communicate its interpretation clearly to the user. It must
+also operate under practical conditions, such as changing distances,
+incomplete views of the body, and limited computing resources. The stakeholders
+for this feasibility study are the Research Centre for Data Intelligence, the
+project client and researcher, and the children and families who represent the
+future users of a home-monitoring system. The current project addresses the
+technical feasibility of such a system, it does not develop or validate a
+medical assessment instrument.
+
+\subsection{Opportunity}
+
+A smartphone or tablet could provide a camera for movement monitoring, but a
+robot offers an additional interaction layer. The Reachy Mini can follow a
+person with its head and body, process camera input on its own computer, and
+respond through head and antenna movements. These behaviours make it possible
+to present the system as an exercise buddy rather than only as a measurement
+device. Such expressive feedback may help make an interaction more
+understandable and engaging, particularly for children exercising without a
+specialist in the room. Engagement, adherence, and clinical acceptability are
+important future questions, but they are outside the evaluation of this
+prototype.
+
+\subsection{Goal and scope}
+
+The goal of this project is to investigate whether the Reachy Mini can perform
+person detection and activity monitoring, including expressive feedback, under
+the computational constraints of the wireless robot. The resulting artefact is
+a working prototype that runs in simulation and on the physical robot. It
+contains a shared camera-to-pose-to-classifier pipeline, temporal feature
+extraction, activity-recognition models, and robot applications that translate
+recognized actions into antenna responses. Model-training and export tools
+were also developed so that the robot can perform inference with NumPy-only
+model files rather than requiring the full training environment. Users can also
+record personalized movements and create their own datasets for future
+recognition models.
+
+The prototype recognizes six classes: none, wave, pushup, squat, clapping,
+and jumping jacks. Evaluation focuses on technical feasibility using
+simulation, public skeleton datasets, recorded robot footage, and different
+camera framings. The robot's camera should ideally capture the whole person,
+waist-up framing removes information that is important for some activities.
+The prototype is not a CMAS scorer, is not clinically validated, and should
+not be used as a clinical decision-support system.
+
+The central research question is:
+
+\begin{quote}
+Can the Reachy Mini serve as an engaging, CPU-only platform for home activity
+monitoring, and what are the technical and practical limits of the current
+prototype?
+\end{quote}
+
+The remainder of this article first discusses the theoretical foundations and
+related solution space. It then describes the prototype and its evaluation
+method, presents the results, discusses their implications and limitations,
+and concludes with directions for future development.

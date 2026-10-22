@@ -41,3 +41,17 @@ collect/recordings/
 # The coach's own recordings in simulation (sim/coach.py), kept apart from the group's dataset.
 collect/coach_recordings/
 collect/.venv/
+
+# --- abstract LaTeX build artifacts -----------------------------------------------------------------
+# Keep the source files and the rendered PDF, but ignore files generated while compiling the document.
+abstract/*.aux
+abstract/*.bbl
+abstract/*.bcf
+abstract/*.blg
+abstract/*.fdb_latexmk
+abstract/*.fls
+abstract/*.log
+abstract/*.out
+abstract/*.run.xml
+abstract/*.synctex.gz
+abstract/*.toc

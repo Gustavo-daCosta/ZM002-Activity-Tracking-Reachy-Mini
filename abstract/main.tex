@@ -1,0 +1,71 @@
+% change this if you want to work in english, or use a different bibliography
+% style
+%
+% For instance, the following would use apa7:
+% bibstyle=apa
+%
+% If your document is in English instead of Dutch, simply remove dutch
+% (do not add 'english')
+%
+% Ex: \documentclass[bibstyle=apa]{adsai}
+%
+% would make an English document with an apa7-compliant bibliography
+%
+% Ex: \documentclass[bibstyle=ieee, dutch]{adsai}
+%
+% would make a Dutch document with an ieee-compliant bibliography
+%
+% you can mix and match these as you wish.
+\documentclass{adsai}
+
+% the title of your project
+\title{PROJECT TITLE}
+% the title of the module, such as 'Design Science Research' or 'Data Science'
+\modulename{MODULE NAME}
+
+% list of authors
+\author{
+student 1 (1234567890) \\
+student 2 (1234567890) \\
+student 3 (1234567890) \\
+student 4 (1234567890) \\
+name 1 (supervisor) \\
+name 2 (supervisor)
+}
+
+% academic year that this document is due in
+\academicyear{2025/2026}
+% the period that this document is due in
+\period{Q1}
+% the date that this document is due
+\date{01-01-2026}
+
+\begin{document}
+\maketitle % this adds the title, authors etc. to the beginning of your document
+
+\newpage
+
+\abstract{Home-based exercise monitoring could reduce repeated hospital visits, but it requires reliable activity recognition in unconstrained environments. This project investigates whether the Reachy Mini robot can provide person detection and activity monitoring while giving feedback as an exercise buddy. A feasibility prototype was developed using a camera-to-pose-to-classifier pipeline. The system tracks a person, extracts COCO-17 keypoints, computes temporal features, and classifies activities with random forest inference. The shared pipeline can run both in simulation and on the physical robot. MoveNet int8 was selected for the robot because of its hardware constraints, and recognized actions trigger antenna responses. Evaluation used subject-separated public skeleton datasets, external datasets, recorded robot footage, and both full-body and waist-up framing. In real-time evaluation, wave, clapping, and jumping jacks were sufficiently reliable for demonstration. Overall, the results support the Reachy Mini as a feasible CPU-based platform for activity-monitoring research, while showing that this prototype is not a CMAS scorer or a clinically validated decision-support system.}
+
+\thispagestyle{empty}
+
+\newpage
+
+\input{sections/sec1_introduction}
+\input{sections/sec2_theoretical_framework}
+\input{sections/sec3_methods}
+\input{sections/sec4_results}
+\input{sections/sec5_discussion}
+\input{sections/sec6_conclusions}
+
+\newpage
+\printbibliography % this adds the bibliography to your document
+
+\newpage
+\appendix
+\appendixpage
+
+\input{appendix}
+
+
+\end{document}
