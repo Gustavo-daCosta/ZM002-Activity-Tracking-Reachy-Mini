@@ -29,6 +29,9 @@ MIN_SCORE = 0.5
 NTU_WAVE_LABEL = 22  # "A23 hand waving"
 HMDB_WAVE_LABEL = 50
 NTU_LABELS = {22: "wave", 9: "clapping"}  # A23 hand waving, A10 clapping (0-based)
+# CMAS items 12 and 14: A9 standing up (from sitting), A6 pick up. A8 sitting down is skipped (None): our
+# chair_rise rounds sit down between rises, so calling it `none` would contradict our own labels.
+NTU_CMAS_LABELS = {8: "chair_rise", 5: "pick_up", 7: None}
 # HMDB51 classes are alphabetical. 38 = situp is deliberately not mapped so a situp called a pushup stays
 # the false positive it is. External test set only.
 HMDB_LABELS = {50: "wave", 29: "pushup", 4: "clapping"}
@@ -210,18 +213,20 @@ def _crop_scores(annotation, joints):
     return dict(annotation, keypoint_score=scores)
 
 
-def _action_windows(path, label_of, group_of, class_of, max_clips_per_class):
+def _action_windows(path, label_of, group_of, class_of, max_clips_per_class, crop_levels=CROP_LEVELS):
     """(features, action name, group) for every clip at every crop level, capping clips per negative class.
 
-    Positives are never capped: there are far fewer of them than negatives.
+    Positives are never capped: there are far fewer of them than negatives. A clip labeled None is skipped.
     """
     taken, out = {}, []
     for annotation in load_annotations(path):
         action = label_of(annotation)
+        if action is None:
+            continue
         if action == NONE and max_clips_per_class is not None and taken.get(class_of(annotation), 0) >= max_clips_per_class:
             continue
         clip = [dict(features, crop=level)
-                for level, joints in CROP_LEVELS.items()
+                for level, joints in crop_levels.items()
                 for features in clip_windows(_crop_scores(annotation, joints), min_span_s=ACTION_MIN_SPAN_S, **ACTION_WINDOW)]
         if not clip:
             continue
@@ -231,10 +236,11 @@ def _action_windows(path, label_of, group_of, class_of, max_clips_per_class):
     return out
 
 
-def ntu_windows(path, max_clips_per_class=None):
-    """Action windows from ntu60_hrnet.pkl: waving and clapping, everything else `none`; grouped by subject."""
-    return _action_windows(path, lambda a: NTU_LABELS.get(a["label"], NONE), lambda d: f"ntu:{ntu_subject(d)}",
-                           lambda a: ("ntu", a["label"]), max_clips_per_class)
+def ntu_windows(path, max_clips_per_class=None, labels=NTU_LABELS, crop_levels=CROP_LEVELS):
+    """Action windows from ntu60_hrnet.pkl: the `labels` classes (default waving and clapping), everything
+    else `none`; grouped by subject."""
+    return _action_windows(path, lambda a: labels.get(a["label"], NONE), lambda d: f"ntu:{ntu_subject(d)}",
+                           lambda a: ("ntu", a["label"]), max_clips_per_class, crop_levels)
 
 
 def hmdb_windows(path, max_clips_per_class=None):

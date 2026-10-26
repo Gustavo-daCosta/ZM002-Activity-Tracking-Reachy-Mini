@@ -54,6 +54,7 @@ COPYFILE_DISABLE=1 tar czf - -C "$REPO" \
   | ssh "$HOST" "tar xzf - -C $REMOTE"
 # Only the models the robot needs: int8 MoveNet and the numpy forests (the other pose models stay on the Mac).
 COPYFILE_DISABLE=1 tar czf - -C "$REPO/core/models" movenet-lightning-int8.tflite wave_classifier_ntu.npz action_classifier.npz exercise_classifier.npz \
+  cmas_classifier.npz \
   | ssh "$HOST" "tar xzf - -C $REMOTE/core/models"
 # The group's exercise recordings (keypoints only, no mp4) seed the coach's training pool. They go to
 # ~/coach_data, outside the app folder, where the children's recordings also live: a deploy adds or

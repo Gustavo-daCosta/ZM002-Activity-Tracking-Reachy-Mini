@@ -30,16 +30,30 @@ INPUT_SIZE = 192
 MIN_SCORE = 0.3
 WINDOW = "Exercise recorder"
 
-CLASSES = ("none", "squat", "arm_raise", "side_bend")
-TITLES = {"none": "NO EXERCISE", "squat": "SQUAT", "arm_raise": "ARM RAISE", "side_bend": "SIDE BEND"}
+# --protocol: (classes, hints for the NO EXERCISE rounds, folder under this one). `main()` sets the globals.
+# cmas: CMAS items 12 (chair rise) and 14 (pick-up) for the classifier, and items 7/8 (arms straight above
+# the head, held) to check the rule in core/motion/cmas.py. Needs a chair and a pencil in view.
+PROTOCOLS = {
+    "physio": (("none", "squat", "arm_raise", "side_bend"),
+               ("stand still", "check your phone", "fix your hair", "take a step", "cross your arms",
+                "scratch your head"), "recordings"),
+    "cmas": (("none", "chair_rise", "pick_up", "arms_overhead"),
+             ("stand still", "sit still on the chair", "take a step", "check your phone", "cross your arms",
+              "fix your hair"), "recordings_cmas"),
+}
+CLASSES, NONE_HINTS, _ = PROTOCOLS["physio"]
+TITLES = {"none": "NO EXERCISE", "squat": "SQUAT", "arm_raise": "ARM RAISE", "side_bend": "SIDE BEND",
+          "chair_rise": "CHAIR RISE", "pick_up": "PICK UP", "arms_overhead": "ARMS UP"}
 HINTS = {
     "squat": "feet shoulder-width, sit back, stand up",
     "arm_raise": "raise both arms sideways to shoulder height, lower",
     "side_bend": "hands on hips, lean left, then right",
+    "chair_rise": "SLOWLY: stand up, pause, sit down, pause",
+    "pick_up": "bend, pick the pencil off the floor, stand, drop it",
+    "arms_overhead": "arms STRAIGHT up, hands above your head, hold",
 }
-NONE_HINTS = ("stand still", "check your phone", "fix your hair", "take a step", "cross your arms",
-              "scratch your head")
-COLORS = {"none": (0, 140, 255), "squat": (200, 120, 0), "arm_raise": (0, 160, 0), "side_bend": (160, 0, 160)}
+COLORS = {"none": (0, 140, 255), "squat": (200, 120, 0), "arm_raise": (0, 160, 0), "side_bend": (160, 0, 160),
+          "chair_rise": (200, 120, 0), "pick_up": (160, 0, 160), "arms_overhead": (0, 160, 0)}
 PAUSE_COLOR = (120, 120, 120)
 PREP_S = 5.0
 COUNTDOWN_S = 3.0
@@ -361,6 +375,9 @@ def main():
     parser.add_argument("--rounds", type=int, default=6, help="rounds per exercise per session (default 6)")
     parser.add_argument("--round-seconds", type=float, default=8.0, help="seconds per round (default 8)")
     parser.add_argument("--list-cameras", action="store_true", help="print which cameras work and exit")
+    parser.add_argument("--protocol", choices=list(PROTOCOLS), default="physio",
+                        help="exercise set: physio (squat, arm raise, side bend) or cmas (chair rise, pick up, "
+                             "arms up; needs a chair and a pencil)")
     args = parser.parse_args()
     if args.list_cameras:
         list_cameras()
@@ -369,7 +386,9 @@ def main():
     if not name:
         parser.error("--name is required (letters, digits, spaces)")
 
-    out_dir = HERE / "recordings" / name
+    global CLASSES, NONE_HINTS
+    CLASSES, NONE_HINTS, folder = PROTOCOLS[args.protocol]
+    out_dir = HERE / folder / name
     out_dir.mkdir(parents=True, exist_ok=True)
     pose = Pose()
     cap = open_camera(args.camera)

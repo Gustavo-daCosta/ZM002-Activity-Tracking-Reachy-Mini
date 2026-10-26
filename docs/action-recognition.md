@@ -82,7 +82,7 @@ only, and needs no scikit-learn at runtime.
 reachy_mini_env/bin/python -m sim.body_tracking --camera FaceTime --model blazepose-lite --detect-actions
 
 # Robot (headless; deploy first with robot/deploy.sh)
-ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.action_recognition --seconds 60'
+ssh reachy 'cd ~/wave_app && ~/camera_env/bin/python -m robot.apps.action_recognition --seconds 60'
 ```
 
 ### Positioning is load-bearing
@@ -151,3 +151,74 @@ windows only, 1 = every cropped copy as well); it never touches the evaluation h
 scored on the same windows. 0.25 is the shipped setting (chosen over 0, 0.5 and 1 in an earlier sweep).
 At 0 the waist-up F1 of `wave`, `squat` and `clapping` is 0.000.
 
+
+## CMAS items: chair rise, pick-up, arms up
+
+Recognizes that a person **performed** four items of the Childhood Myositis Assessment Scale; it does not
+score them on the CMAS scale.
+
+| CMAS item | How |
+|---|---|
+| 7 arm raise / straighten | rule, `core/motion/cmas.py`: both wrists above the top of the head and both elbows ≥ 160° |
+| 8 arm raise / duration | same rule, timed: seconds the wrists stay above the head (0.5 s gaps tolerated) |
+| 12 chair rise | classifier `core/models/cmas_classifier.npz` (`none`, `chair_rise`, `pick_up`) |
+| 14 pick-up | same classifier |
+
+Item 13 (stool step) is left out: no public dataset has it and we have no stool to record it with.
+
+```bash
+# live, in simulation (Mac webcam)
+reachy_mini_env/bin/python -m sim.body_tracking --camera FaceTime --model blazepose-lite --cmas
+# live, on the robot (deploy first; annotated view at http://<robot>:8090/)
+ssh reachy 'cd ~/wave_app && ~/camera_env/bin/python -m robot.apps.action_recognition --cmas --follow --stream-port 8090'
+# retrain the shipped model (NTU only)
+reachy_mini_env/bin/python -m training.train_cmas --ntu datasets/ntu60_hrnet.pkl
+# record a CMAS session (in collect/; a chair and a pencil in view, room above the head for raised hands)
+cd collect && ../reachy_mini_env/bin/python record_exercises.py --name caio --protocol cmas --camera <index>
+```
+
+**The shipped model is trained on NTU alone** (A9 standing up, A6 pick up, other actions as `none`, A8
+sitting down skipped). `--with-recordings` also trains on `collect/recordings/` (as `none`, squats excluded)
+and `collect/recordings_cmas/`; on our one room session that variant scored *lower* (pick-up F1 0.905
+against 0.933), so it is an experiment, not the default.
+
+The top of the head is not a COCO-17 keypoint: it is extrapolated from the nose (`HEAD_TOP`, a calibration
+knob not yet measured on a correctly framed arms-up recording). The classifier's features carry amplitudes,
+not directions, so **sitting down and standing up look alike**: a `chair_rise` detection means a sit/stand
+transition happened, not which way.
+
+### Measured
+
+5-fold by person, full body only. The room rows are one session of one person (MoveNet on the Mac webcam),
+never seen in training:
+
+| source | class | precision | recall | F1 |
+|---|---|---|---|---|
+| NTU (studio, unseen subjects) | chair_rise | 0.963 | 0.889 | 0.924 |
+| NTU (studio, unseen subjects) | pick_up | 0.940 | 0.983 | 0.961 |
+| our room, CMAS session 1 | pick_up | 0.913 | 0.955 | **0.933** |
+| our room, CMAS session 1 | chair_rise | 1.000 | 0.091 | **0.167** |
+
+**The room chair-rise number measures the recording, not the model.** Session 1's chair-rise rounds were
+fast sit/stand cycles (hip reversal rate 3.4/s against NTU's 0.5/s); NTU clips hold one rise each, and so
+does the CMAS item. The kit now asks for slow single rises with pauses. Done that way, live, the model
+recognized rises on the Mac and on the robot (below). A session recorded with the new instructions is what
+would turn that into a number.
+
+Session 1's arms-up rounds cannot validate the item 7/8 rule either: the arms went out to the sides in a V,
+wrists about level with the head, because the camera framed the head near the top edge. The rule never
+fired outside those rounds (0 of 6 535 frames).
+
+Squats are never `none` here: with them in, the model missed every room rise and called 73 squats pick-ups.
+
+### Live checks (one person, counted by the app, not labeled)
+
+| where | pose | person detected | recognized | longest arms-up hold |
+|---|---|---|---|---|
+| Mac webcam, simulation | BlazePose lite | 90% | chair_rise 6, pick_up 4 | 11.2 s |
+| robot, MoveNet letterboxed (before) | MoveNet int8 | 52% | pick_up 5, nothing else; rises read as pick-ups | never |
+| robot, MoveNet crop tracking + `--follow` | MoveNet int8 | 72% | chair_rise 6, pick_up 11 | 9.0 s |
+
+The tester judged the Mac run and the last robot run good. No ground-truth counts were kept, so these are
+not precision or recall. The robot was poor until MoveNet stopped letterboxing the 16:9 wide-angle frame
+(see `docs/pose-models.md`); placement still matters: the whole person, chair and pencil in view.

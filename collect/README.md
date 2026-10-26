@@ -78,3 +78,15 @@ Everything stays in the `recordings/` folder on your computer and in the zip you
 - **macOS: black image or no camera** — System Settings → Privacy & Security → Camera: allow your terminal app.
 - **Banner stays red** — step further back, and make sure the room is well lit.
 - **`movenet-lightning.onnx not found`** — unzip the whole folder, and run the script from inside it.
+
+## CMAS protocol
+
+`--protocol cmas` records CHAIR RISE, PICK UP, ARMS UP and NO EXERCISE instead, into `recordings_cmas/`.
+Put a chair facing the camera and a pencil on the floor in front of it, all in view, and leave room above
+your head: with your arms straight up your hands must stay in the picture.
+
+| On screen | What to do |
+|---|---|
+| CHAIR RISE | Slowly: stand up, pause ~2 s, sit down, pause ~2 s. One rise at a time, like the CMAS test. Some rises with your hands on your knees. |
+| PICK UP | Bend down, pick the pencil up off the floor, stand up, drop it. Repeat, sometimes with a hand on your knee. |
+| ARMS UP | Raise both arms straight up (elbows straight, hands above your head, not out to the sides) and hold until the round ends. |

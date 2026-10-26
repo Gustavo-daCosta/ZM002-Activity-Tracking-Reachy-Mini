@@ -37,6 +37,8 @@ DEFAULT_LABELS: dict[str, str] = {
     "jumping_jacks": "Jumping jacks detected",
     "arm_raise":     "Arm raise detected",
     "side_bend":     "Side bend detected",
+    "chair_rise":    "Chair rise detected",
+    "pick_up":       "Pick up detected",
 }
 
 DEFAULT_RATE: int = -30          # spd-say rate (-100 to 100)

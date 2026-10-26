@@ -10,6 +10,7 @@ shoulders, then nose) and the window shows the model output with live timings.
     reachy_mini_env/bin/python -m sim.body_tracking --model vitpose-s
     reachy_mini_env/bin/python -m sim.body_tracking --detect-wave     # + wave recognition (antennas wave back)
     reachy_mini_env/bin/python -m sim.body_tracking --detect-actions  # + six-class action recognition
+    reachy_mini_env/bin/python -m sim.body_tracking --cmas            # CMAS chair rise / pick-up + arms-up timer
     sim/exercises.sh                                                 # squat / arm raise / side bend, one command
 
 The camera is selected by NAME (`--camera FaceTime`), never by index: OpenCV's indices move when an
@@ -22,7 +23,8 @@ import time
 import cv2
 
 from core.metrics import StageStats, format_summary
-from core.motion.actions import DEFAULT_ACTION_MODEL, ActionDetector, ActionMonitor
+from core.motion.actions import CMAS_MODEL, DEFAULT_ACTION_MODEL, ActionDetector, ActionMonitor
+from core.motion.cmas import OverheadHold
 from core.motion.wave import WaveMonitor
 from core.pose_backends import BACKENDS, create_backend
 from core.tracking import HeadFollower, body_center, image_error_to_angles
@@ -50,6 +52,9 @@ def parse_args(argv=None):
                              "body in frame")
     parser.add_argument("--action-model", default=None,
                         help="action model to run (default: core/models/action_classifier.npz)")
+    parser.add_argument("--cmas", action="store_true",
+                        help="CMAS items: --detect-actions with the chair rise / pick-up model, plus how long the "
+                             "arms stay straight above the head (items 7 and 8)")
     return parser.parse_args(argv)
 
 
@@ -92,6 +97,11 @@ def main():
 
     monitor = None
     action_model = None
+    hold = None
+    if args.cmas:
+        args.detect_actions = True
+        args.action_model = args.action_model or CMAS_MODEL
+        hold = OverheadHold()
     if args.detect_wave and args.detect_actions:
         backend.close()
         cap.release()
@@ -153,6 +163,8 @@ def main():
                 if monitor is not None:
                     monitor.window.aspect_ratio = frame.shape[1] / frame.shape[0]
                     timings = {**result.timings, "motion": monitor.update(now, result.keypoints)}
+                if hold is not None:
+                    hold.update(now, result.keypoints, min_score, frame.shape[1] / frame.shape[0])
                 stats.add_frame(timings, has_target=target is not None)
 
                 if now - last_update >= update_interval:
@@ -160,7 +172,9 @@ def main():
                     mini.set_target(head=create_head_pose(yaw=yaw, pitch=pitch, degrees=True), antennas=antennas)
                     last_update = now
 
-                extra_lines = list(monitor.panel_lines(now)) if monitor is not None else ()
+                extra_lines = list(monitor.panel_lines(now)) if monitor is not None else []
+                if hold is not None:
+                    extra_lines.append(hold.panel_line())
                 draw_overlay(frame, result, target, min_score, stats.window_summary(), backend.name, yaw, pitch,
                              extra_lines)
                 cv2.imshow("Reachy Mini sim - body tracking", frame)
@@ -181,6 +195,8 @@ def main():
             elif monitor is not None:
                 counts = " ".join(f"{action}:{count}" for action, count in monitor.counts.items() if count)
                 print(f"  actions recognized: {counts or '-'}")
+            if hold is not None:
+                print(f"  longest arms-up hold: {hold.best_s:.1f} s")
 
 
 if __name__ == "__main__":

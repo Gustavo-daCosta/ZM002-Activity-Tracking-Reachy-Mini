@@ -19,6 +19,8 @@ ACTIONS = (NONE, "wave", "pushup", "squat", "clapping", "jumping_jacks")
 DEFAULT_ACTION_MODEL = MODELS_DIR / "action_classifier.npz"
 # none/squat/arm_raise/side_bend, trained on the group's recordings (training/train_exercises.py).
 EXERCISE_MODEL = MODELS_DIR / "exercise_classifier.npz"
+# none/chair_rise/pick_up (CMAS items 12 and 14), trained on NTU RGB+D (training/train_cmas.py).
+CMAS_MODEL = MODELS_DIR / "cmas_classifier.npz"
 GREEN, GREY, YELLOW, CYAN = (0, 255, 0), (200, 200, 200), (255, 200, 0), (0, 255, 255)
 
 # One antenna signature per action: (amplitude deg, Hz, whole cycles). Whole cycles end at sin = 0, the
@@ -27,6 +29,7 @@ REACTIONS = {
     "wave": (20.0, 1.5, 2), "clapping": (12.0, 3.0, 3), "pushup": (30.0, 0.8, 1),
     "squat": (25.0, 1.1, 2), "jumping_jacks": (35.0, 2.2, 4),
     "arm_raise": (30.0, 1.5, 2), "side_bend": (18.0, 0.8, 1),
+    "chair_rise": (25.0, 0.8, 1), "pick_up": (30.0, 1.2, 2),
 }
 
 
