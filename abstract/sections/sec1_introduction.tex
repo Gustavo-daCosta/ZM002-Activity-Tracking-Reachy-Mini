@@ -20,8 +20,11 @@ also operate under practical conditions, such as changing distances,
 incomplete views of the body, and limited computing resources. The stakeholders
 for this feasibility study are the Research Centre for Data Intelligence, the
 project client and researcher, and the children and families who represent the
-future users of a home-monitoring system. The current project addresses the
-technical feasibility of such a system, it does not develop or validate a
+future users of a home-monitoring system. The project requirements were
+consolidated in a software requirements specification covering perception,
+robot interaction, activity recognition, feedback, session management, privacy,
+accuracy, reliability, usability, and safety. The current project addresses the
+technical feasibility of such a system; it does not develop or validate a
 medical assessment instrument.
 
 \subsection{Opportunity}
@@ -45,17 +48,22 @@ the computational constraints of the wireless robot. The resulting artefact is
 a working prototype that runs in simulation and on the physical robot. It
 contains a shared camera-to-pose-to-classifier pipeline, temporal feature
 extraction, activity-recognition models, and robot applications that translate
-recognized actions into antenna responses. Model-training and export tools
-were also developed so that the robot can perform inference with NumPy-only
-model files rather than requiring the full training environment. Users can also
-record personalized movements and create their own datasets for future
+recognized actions into antenna responses. Candidate vision models were
+benchmarked under the robot's CPU constraints, leading to the selection of
+MoveNet int8 for on-robot pose estimation. Model-training and export tools were
+also developed so that the robot can perform inference with NumPy-only model
+files rather than requiring the full training environment. Recognition models
+were evaluated on public skeleton datasets with subject or footage-group
+separation, as well as on robot recordings and an external dataset. Users can
+also record personalized movements and create their own datasets for future
 recognition models.
 
 The prototype recognizes six classes: none, wave, pushup, squat, clapping,
 and jumping jacks. Evaluation focuses on technical feasibility using
-simulation, public skeleton datasets, recorded robot footage, and different
-camera framings. The robot's camera should ideally capture the whole person,
-waist-up framing removes information that is important for some activities.
+simulation, public skeleton datasets, recorded robot footage, an external test
+dataset, and different camera framings. The robot's camera should ideally
+capture the whole person, because waist-up framing removes information that is
+important for some activities.
 The prototype is not a CMAS scorer, is not clinically validated, and should
 not be used as a clinical decision-support system.
 
