@@ -11,9 +11,7 @@ exercise monitoring more accessible to children with juvenile dermatomyositis
 Myositis Assessment Scale (CMAS) under the supervision of specialists at the
 Wilhelmina Children's Hospital (WKZ). Repeated travel to the hospital is
 burdensome for children and their families, which creates an opportunity for
-technologies that can support monitoring at home.
-
-Automated home monitoring must do more than record a video. It must detect a
+technologies that can support monitoring at home. Automated home monitoring must do more than record a video. It must detect a
 person, estimate body movement from visual input, distinguish between
 activities, and communicate its interpretation clearly to the user. It must
 also operate under practical conditions, such as changing distances,
@@ -27,20 +25,7 @@ accuracy, reliability, usability, and safety. The current project addresses the
 technical feasibility of such a system; it does not develop or validate a
 medical assessment instrument.
 
-\subsection{Opportunity}
-
-A smartphone or tablet could provide a camera for movement monitoring, but a
-robot offers an additional interaction layer. The Reachy Mini can follow a
-person with its head and body, process camera input on its own computer, and
-respond through head and antenna movements. These behaviours make it possible
-to present the system as an exercise buddy rather than only as a measurement
-device. Such expressive feedback may help make an interaction more
-understandable and engaging, particularly for children exercising without a
-specialist in the room. Engagement, adherence, and clinical acceptability are
-important future questions, but they are outside the evaluation of this
-prototype.
-
-\subsection{Goal and scope}
+\subsection{Goal}
 
 The goal of this project is to investigate whether the Reachy Mini can perform
 person detection and activity monitoring, including expressive feedback, under
@@ -57,7 +42,6 @@ were evaluated on public skeleton datasets with subject or footage-group
 separation, as well as on robot recordings and an external dataset. Users can
 also record personalized movements and create their own datasets for future
 recognition models.
-
 The prototype recognizes six classes: none, wave, pushup, squat, clapping,
 and jumping jacks. Evaluation focuses on technical feasibility using
 simulation, public skeleton datasets, recorded robot footage, an external test
@@ -66,16 +50,11 @@ capture the whole person, because waist-up framing removes information that is
 important for some activities.
 The prototype is not a CMAS scorer, is not clinically validated, and should
 not be used as a clinical decision-support system.
-
 The central research question is:
-
 \begin{quote}
-Can the Reachy Mini serve as an engaging, CPU-only platform for home activity
-monitoring, and what are the technical and practical limits of the current
-prototype?
+To what extent can the Reachy Mini detect a person, recognize physiotherapy-related exercises, and provide expressive feedback while operating within its computational constraints? 
 \end{quote}
-
-The remainder of this article first discusses the theoretical foundations and
+The remainder of this report first discusses the theoretical foundations and
 related solution space. It then describes the prototype and its evaluation
 method, presents the results, discusses their implications and limitations,
 and concludes with directions for future development.
