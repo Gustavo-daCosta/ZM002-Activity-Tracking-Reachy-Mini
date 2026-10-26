@@ -10,7 +10,7 @@ talk to the user in **Portuguese**; write code, comments, commits and docs in **
 ## The robot
 
 - Reachy Mini **wireless** (Raspberry Pi CM4, ReachyMiniOS v0.2.3), daemon + SDK `reachy_mini` **1.10.0** (keep equal).
-- Host: `10.42.0.66` — **may change** (DHCP). Fallback `reachy-mini.local`. Override: `REACHY_HOST=<ip>`.
+- Host: `192.168.137.53` — **may change** (DHCP; was `10.42.0.66`). Fallback `reachy-mini.local`. Override: `REACHY_HOST=<ip>`.
   The IP lives only in `robot/connect.py` and in `HostName` of `Host reachy` in `~/.ssh/config`.
 - Robot and this computer **must be on the same Wi-Fi** (currently `Reachy Mini`).
 - REST API: `http://<host>:8000` (Swagger `/docs`). SSH: `ssh reachy '<cmd>'` (user `pollen`, password `root`
@@ -64,6 +64,11 @@ camera released, stop head tracking you started.
   the power cable.
 - Robot clock is not NTP-synced: journal timestamps are unreliable.
 - macOS has no `timeout` or `sshpass`: bound loops in code; use the `reachy` SSH key.
+- Robot apps read the camera through Picamera2, importable only from `~/camera_env` (system Python 3.13).
+  Run them with `~/camera_env/bin/python`; `~/wave_env` (3.12) fails with `No module named 'picamera2'` and
+  is only for the coach's training subprocess.
+- `pkill -f <app>` over `ssh reachy '...'` also matches the ssh shell's own command line and kills it
+  (the output vanishes). Use `pgrep -af "[r]obot.apps.<app>"` and kill by PID.
 
 ## Project layout: what runs where
 
@@ -79,7 +84,7 @@ tools/      developer utilities (datasets, SSH setup, API reference)
 ```
 
 - `core/` — pose backends, motion recognition (`core/motion/`: window, features, forest, wave, actions,
-  antennas), the coach (`core/coach/`: guided recording, trainer subprocess, phase machine), vision,
+  antennas, cmas), the coach (`core/coach/`: guided recording, trainer subprocess, phase machine), vision,
   tracking, metrics and the tracked `.npz` models. It imports nothing from `robot/`, `sim/` or `training/`, and that direction must
   stay one-way: anything in `core/` is code you are also shipping to a Raspberry Pi CM4.
 - `robot/` — `connect.py` (`ROBOT_IP`, `resolve_host()`, `connect_robot(media, sleep_on_exit, needs)`,
@@ -130,6 +135,10 @@ Read `docs/action-recognition.md` before promising any of this to an audience. T
   `elbow_angle_amplitude` by 17°). Build it from the first real frame, never from a constant.
 - `ActionMonitor.panel_lines` is a generator, and its `antennas()` already includes `NEUTRAL_ANTENNAS` —
   unlike `WaveMonitor`'s. Do not add the neutral pose twice.
+- CMAS (`--cmas` in `sim.body_tracking` and `robot.apps.action_recognition`): recognizes that items 12
+  (chair rise) and 14 (pick-up) were performed, with an NTU-only forest, and times items 7/8 (arms straight
+  above the head) with a rule. It does **not** score the CMAS. Measured and live results, and why the room
+  chair-rise number is not a model number: `docs/action-recognition.md`.
 
 ## Robot deployment
 
