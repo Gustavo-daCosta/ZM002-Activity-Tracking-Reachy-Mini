@@ -14,7 +14,7 @@ import time
 import cv2
 import numpy as np
 
-from core.pose_backends import PoseResult
+from core.pose_backends import LEFT_HIP, LEFT_SHOULDER, RIGHT_HIP, RIGHT_SHOULDER, PoseResult
 from core.vision import download_model
 
 
@@ -33,80 +33,65 @@ TFLITE_URL = (
 )
 
 
-def letterbox(frame_bgr, size):
-    """Resize an image while preserving its aspect ratio, then pad it.
+# Crop tracking, as in Google's MoveNet demo: each frame is cut around the previous pose so the person
+# fills the 192 px input. Letterboxing the robot's 16:9 wide-angle frame left ~192x108 px of image and the
+# person a few dozen pixels tall (person detected in 52% of frames on the robot).
+# Half the crop side is at least TORSO_MARGIN x the farthest torso joint from the body centre (the demo uses
+# 1.9; arms raised straight up need more) and BODY_MARGIN x the farthest confident joint.
+TORSO_MARGIN = 2.2
+BODY_MARGIN = 1.3
+MIN_CROP = 0.25  # smallest crop side, as a fraction of the frame's long side
+TORSO = (LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP)
 
-    Args:
-        frame_bgr: Input image in BGR format.
-        size: Width and height of the resulting square image.
 
-    Returns:
-        RGB image, resize scale, and (pad_x, pad_y).
+def crop_region(previous, min_score, frame_shape):
+    """(x0, y0, side) in pixels: a square around the `previous` pose, or the whole frame letterboxed.
+
+    The square may stick out of the frame; `crop_square` fills that part with black.
     """
-    height, width = frame_bgr.shape[:2]
-
-    scale = size / max(height, width)
-
-    new_width = round(width * scale)
-    new_height = round(height * scale)
-
-    if (new_width, new_height) == (width, height):
-        # Already at the required image dimensions: do not resize.
-        resized = frame_bgr
+    height, width = frame_shape[:2]
+    long_side = max(width, height)
+    whole = ((width - long_side) / 2, (height - long_side) / 2, long_side)
+    if previous is None:
+        return whole
+    xy = previous[:, :2] * (width, height)
+    confident = previous[:, 2] >= min_score
+    if confident[[LEFT_HIP, RIGHT_HIP]].all():
+        centre = xy[[LEFT_HIP, RIGHT_HIP]].mean(axis=0)
+    elif confident[[LEFT_SHOULDER, RIGHT_SHOULDER]].all():
+        centre = xy[[LEFT_SHOULDER, RIGHT_SHOULDER]].mean(axis=0)
     else:
-        resized = cv2.resize(
-            frame_bgr,
-            (new_width, new_height),
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-    pad_x = (size - new_width) // 2
-    pad_y = (size - new_height) // 2
-
-    square = np.zeros(
-        (size, size, 3),
-        dtype=np.uint8,
-    )
-
-    square[
-        pad_y:pad_y + new_height,
-        pad_x:pad_x + new_width,
-    ] = resized
-
-    square_rgb = cv2.cvtColor(
-        square,
-        cv2.COLOR_BGR2RGB,
-    )
-
-    return square_rgb, scale, (pad_x, pad_y)
+        return whole
+    reach = np.abs(xy - centre).max(axis=1)  # per joint, along the farther axis: the crop is square
+    torso = [joint for joint in TORSO if confident[joint]]
+    half = max(TORSO_MARGIN * reach[torso].max(), BODY_MARGIN * reach[confident].max(), MIN_CROP * long_side / 2)
+    if 2 * half >= long_side:
+        return whole
+    return centre[0] - half, centre[1] - half, 2 * half
 
 
-def decode_keypoints(output, scale, pad, frame_shape):
-    """Convert MoveNet output into normalized COCO-17 keypoints.
+def crop_square(frame_bgr, region, size=INPUT_SIZE):
+    """The `region` of the frame as a `size` x `size` RGB image, black where it leaves the frame."""
+    x0, y0, side = region
+    scale = size / side
+    matrix = np.float32([[scale, 0, -x0 * scale], [0, scale, -y0 * scale]])
+    square = cv2.warpAffine(frame_bgr, matrix, (size, size), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0))
+    return cv2.cvtColor(square, cv2.COLOR_BGR2RGB)
+
+
+def decode_keypoints(output, region, frame_shape):
+    """Convert MoveNet output (relative to the crop) into frame-normalized COCO-17 keypoints.
 
     Returns:
         Float32 array with shape (17, 3): x, y, confidence.
     """
     height, width = frame_shape[:2]
-    pad_x, pad_y = pad
-
+    x0, y0, side = region
     raw = np.asarray(output).reshape(-1, 3)
-
-    keypoints = np.zeros(
-        (raw.shape[0], 3),
-        dtype=np.float32,
-    )
-
-    keypoints[:, 0] = (
-        raw[:, 1] * INPUT_SIZE - pad_x
-    ) / scale / width
-
-    keypoints[:, 1] = (
-        raw[:, 0] * INPUT_SIZE - pad_y
-    ) / scale / height
-
+    keypoints = np.zeros((raw.shape[0], 3), dtype=np.float32)
+    keypoints[:, 0] = (x0 + raw[:, 1] * side) / width
+    keypoints[:, 1] = (y0 + raw[:, 0] * side) / height
     keypoints[:, 2] = raw[:, 2]
-
     return keypoints
 
 
@@ -118,6 +103,7 @@ class MoveNetBackend:
 
     def __init__(self):
         """Load the ONNX model and initialize CUDA inference."""
+        self._previous = None  # last pose, where the next crop is centred
         import onnxruntime as ort
 
         # Fail explicitly rather than silently running the entire model on CPU
@@ -194,10 +180,8 @@ class MoveNetBackend:
         """Run GPU-accelerated MoveNet inference on one BGR frame."""
         start = time.perf_counter()
 
-        square, scale, pad = letterbox(
-            frame_bgr,
-            INPUT_SIZE,
-        )
+        region = crop_region(self._previous, self.default_min_score, frame_bgr.shape)
+        square = crop_square(frame_bgr, region)
 
         output = self._session.run(
             None,
@@ -206,14 +190,9 @@ class MoveNetBackend:
             },
         )[0]
 
-        return _result(
-            output,
-            scale,
-            pad,
-            frame_bgr.shape,
-            start,
-            self.default_min_score,
-        )
+        result = _result(output, region, frame_bgr.shape, start, self.default_min_score)
+        self._previous = result.keypoints
+        return result
 
     def close(self):
         """Release the ONNX Runtime session."""
@@ -228,6 +207,7 @@ class MoveNetTFLiteBackend:
 
     def __init__(self, threads=4):
         """Load the TFLite model using LiteRT."""
+        self._previous = None  # last pose, where the next crop is centred
         from ai_edge_litert.interpreter import Interpreter
 
         path = download_model(
@@ -251,10 +231,8 @@ class MoveNetTFLiteBackend:
         """Run LiteRT inference on one BGR frame."""
         start = time.perf_counter()
 
-        square, scale, pad = letterbox(
-            frame_bgr,
-            INPUT_SIZE,
-        )
+        region = crop_region(self._previous, self.default_min_score, frame_bgr.shape)
+        square = crop_square(frame_bgr, region)
 
         self._interpreter.set_tensor(
             self._input["index"],
@@ -267,28 +245,18 @@ class MoveNetTFLiteBackend:
             self._output["index"],
         )
 
-        return _result(
-            output,
-            scale,
-            pad,
-            frame_bgr.shape,
-            start,
-            self.default_min_score,
-        )
+        result = _result(output, region, frame_bgr.shape, start, self.default_min_score)
+        self._previous = result.keypoints
+        return result
 
     def close(self):
         """Release the LiteRT interpreter."""
         self._interpreter = None
 
 
-def _result(output, scale, pad, frame_shape, start, min_score):
+def _result(output, region, frame_shape, start, min_score):
     """Decode model output and measure pose-inference time."""
-    keypoints = decode_keypoints(
-        output,
-        scale,
-        pad,
-        frame_shape,
-    )
+    keypoints = decode_keypoints(output, region, frame_shape)
 
     elapsed_ms = (
         time.perf_counter() - start

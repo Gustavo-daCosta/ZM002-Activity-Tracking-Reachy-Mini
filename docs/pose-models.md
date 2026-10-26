@@ -27,6 +27,13 @@ ViTPose pre/post-processing follows [easy_ViTPose](https://github.com/JunkyByte/
 normalization, 3:4 crop, UDP heatmap decoding). On the same webcam frame its nose/eyes/shoulders land within
 ~0.04 (normalized) of BlazePose.
 
+**MoveNet crop tracking** (`core/pose_backends/movenet.py`): each frame is cut around the previous pose (a
+square centred on the hips, half-side ≥ 2.2× the torso reach and 1.3× the farthest joint), as in Google's
+MoveNet demo; the whole frame, letterboxed, is the fallback when the pose is lost. Letterboxing the robot's
+16:9 wide-angle frame into the 192 px input left the person a few dozen pixels tall: person detected 52% of
+frames on the robot before, 72% after. On a robot-like 16:9 replay of a Mac recording, mean keypoint score
+went 0.48 → 0.68 and both wrists confident 82% → 100% of frames.
+
 **Target rule:** mean of confident shoulders and hips (`torso`); if the hips are out of frame, the shoulders;
 else the nose; else `lost` and the head drifts back to center. Confidence threshold per model
 (`--min-score`, default 0.5 for BlazePose visibility, 0.3 for ViTPose heatmap peaks).
