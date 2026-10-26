@@ -1,0 +1,296 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{none/global//global/global/global}
+    \entry{breiman2001random}{article}{}{}
+      \name{author}{1}{}{%
+        {{hash=132b7100417675d55d5d4d8b244f7a34}{%
+           family={Breiman},
+           familyi={B\bibinitperiod},
+           given={Leo},
+           giveni={L\bibinitperiod}}}%
+      }
+      \strng{namehash}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{fullhash}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{fullhashraw}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{bibnamehash}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{authorbibnamehash}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{authornamehash}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{authorfullhash}{132b7100417675d55d5d4d8b244f7a34}
+      \strng{authorfullhashraw}{132b7100417675d55d5d4d8b244f7a34}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Machine Learning}
+      \field{number}{1}
+      \field{title}{Random Forests}
+      \field{volume}{45}
+      \field{year}{2001}
+      \field{pages}{5\bibrangedash 32}
+      \range{pages}{28}
+      \verb{doi}
+      \verb 10.1023/A:1010933404324
+      \endverb
+    \endentry
+    \entry{saeb2017need}{article}{}{}
+      \name{author}{5}{}{%
+        {{hash=a3e4a1508d23305a6e0790f62662342d}{%
+           family={Saeb},
+           familyi={S\bibinitperiod},
+           given={Soheil},
+           giveni={S\bibinitperiod}}}%
+        {{hash=c3c7b83752288c9d39aa3a75e44eea9c}{%
+           family={Lonini},
+           familyi={L\bibinitperiod},
+           given={Luca},
+           giveni={L\bibinitperiod}}}%
+        {{hash=75844916c9af339c6afcd718ad4295d9}{%
+           family={Jayaraman},
+           familyi={J\bibinitperiod},
+           given={Arun},
+           giveni={A\bibinitperiod}}}%
+        {{hash=6666f74456d0b217a24ba224a8379efd}{%
+           family={Mohr},
+           familyi={M\bibinitperiod},
+           given={David\bibnamedelima C.},
+           giveni={D\bibinitperiod\bibinitdelim C\bibinitperiod}}}%
+        {{hash=bc19386e95fe00742c37788c7d0eab45}{%
+           family={Kording},
+           familyi={K\bibinitperiod},
+           given={Konrad\bibnamedelima P.},
+           giveni={K\bibinitperiod\bibinitdelim P\bibinitperiod}}}%
+      }
+      \strng{namehash}{68b301dd9289fcbcaad89aa7d64cfa4c}
+      \strng{fullhash}{c2d14a3a66f877836b9d0d134727ac6f}
+      \strng{fullhashraw}{c2d14a3a66f877836b9d0d134727ac6f}
+      \strng{bibnamehash}{c2d14a3a66f877836b9d0d134727ac6f}
+      \strng{authorbibnamehash}{c2d14a3a66f877836b9d0d134727ac6f}
+      \strng{authornamehash}{68b301dd9289fcbcaad89aa7d64cfa4c}
+      \strng{authorfullhash}{c2d14a3a66f877836b9d0d134727ac6f}
+      \strng{authorfullhashraw}{c2d14a3a66f877836b9d0d134727ac6f}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{GigaScience}
+      \field{number}{5}
+      \field{title}{The Need to Approximate the Use-Case in Clinical Machine Learning}
+      \field{volume}{6}
+      \field{year}{2017}
+      \field{pages}{1\bibrangedash 9}
+      \range{pages}{9}
+      \verb{doi}
+      \verb 10.1093/gigascience/gix019
+      \endverb
+    \endentry
+    \entry{shahroudy2016ntu}{inproceedings}{}{}
+      \name{author}{4}{}{%
+        {{hash=bd9806e2b6a75a8882c14bb84deef5aa}{%
+           family={Shahroudy},
+           familyi={S\bibinitperiod},
+           given={Amir},
+           giveni={A\bibinitperiod}}}%
+        {{hash=f2a0a4f5a03bef37fc5552061319cb71}{%
+           family={Liu},
+           familyi={L\bibinitperiod},
+           given={Jun},
+           giveni={J\bibinitperiod}}}%
+        {{hash=ba9e86ade2c382d8063770fad02ba59c}{%
+           family={Ng},
+           familyi={N\bibinitperiod},
+           given={Tian-Tsong},
+           giveni={T\bibinithyphendelim T\bibinitperiod}}}%
+        {{hash=3d33b99ab2b9fa2c7987e1d7f5873222}{%
+           family={Wang},
+           familyi={W\bibinitperiod},
+           given={Gang},
+           giveni={G\bibinitperiod}}}%
+      }
+      \strng{namehash}{8ad2c207ec75455ab83a26c359672210}
+      \strng{fullhash}{22fc610ce11011c533f652d6e2925bc2}
+      \strng{fullhashraw}{22fc610ce11011c533f652d6e2925bc2}
+      \strng{bibnamehash}{22fc610ce11011c533f652d6e2925bc2}
+      \strng{authorbibnamehash}{22fc610ce11011c533f652d6e2925bc2}
+      \strng{authornamehash}{8ad2c207ec75455ab83a26c359672210}
+      \strng{authorfullhash}{22fc610ce11011c533f652d6e2925bc2}
+      \strng{authorfullhashraw}{22fc610ce11011c533f652d6e2925bc2}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}
+      \field{title}{NTU RGB+D: A Large Scale Dataset for 3D Human Activity Analysis}
+      \field{year}{2016}
+      \field{pages}{1010\bibrangedash 1019}
+      \range{pages}{10}
+      \verb{doi}
+      \verb 10.1109/CVPR.2016.115
+      \endverb
+    \endentry
+    \entry{soomro2012ucf101}{report}{}{}
+      \name{author}{3}{}{%
+        {{hash=570032ed0e8ff7386c18881cba938d61}{%
+           family={Soomro},
+           familyi={S\bibinitperiod},
+           given={Khurram},
+           giveni={K\bibinitperiod}}}%
+        {{hash=758e4a50852651de4c17da4a7800f34f}{%
+           family={Zamir},
+           familyi={Z\bibinitperiod},
+           given={Amir\bibnamedelima Roshan},
+           giveni={A\bibinitperiod\bibinitdelim R\bibinitperiod}}}%
+        {{hash=c75751f493070716733608d20f74e3af}{%
+           family={Shah},
+           familyi={S\bibinitperiod},
+           given={Mubarak},
+           giveni={M\bibinitperiod}}}%
+      }
+      \list{institution}{1}{%
+        {Center for Research in Computer Vision, University of Central Florida}%
+      }
+      \strng{namehash}{0cc3d0b55e0c36f4d65dad222c111fcf}
+      \strng{fullhash}{3f1dedcf062398f2607edca9d3cffb48}
+      \strng{fullhashraw}{3f1dedcf062398f2607edca9d3cffb48}
+      \strng{bibnamehash}{3f1dedcf062398f2607edca9d3cffb48}
+      \strng{authorbibnamehash}{3f1dedcf062398f2607edca9d3cffb48}
+      \strng{authornamehash}{0cc3d0b55e0c36f4d65dad222c111fcf}
+      \strng{authorfullhash}{3f1dedcf062398f2607edca9d3cffb48}
+      \strng{authorfullhashraw}{3f1dedcf062398f2607edca9d3cffb48}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{eprinttype}{arXiv}
+      \field{number}{CRCV-TR-12-01}
+      \field{title}{UCF101: A Dataset of 101 Human Actions Classes From Videos in the Wild}
+      \field{type}{techreport}
+      \field{year}{2012}
+      \verb{eprint}
+      \verb 1212.0402
+      \endverb
+    \endentry
+    \entry{pedregosa2011scikit}{article}{}{}
+      \name{author}{16}{}{%
+        {{hash=bab4e5caee2d67831e464ce575022b37}{%
+           family={Pedregosa},
+           familyi={P\bibinitperiod},
+           given={Fabian},
+           giveni={F\bibinitperiod}}}%
+        {{hash=8dfd6b3615de2946b6e0c1772b3b5827}{%
+           family={Varoquaux},
+           familyi={V\bibinitperiod},
+           given={Gael},
+           giveni={G\bibinitperiod}}}%
+        {{hash=12ebe424e1c87de156c57e8fa7683f46}{%
+           family={Gramfort},
+           familyi={G\bibinitperiod},
+           given={Alexandre},
+           giveni={A\bibinitperiod}}}%
+        {{hash=504ea1986689f1047a6f0beda2cb3822}{%
+           family={Michel},
+           familyi={M\bibinitperiod},
+           given={Vincent},
+           giveni={V\bibinitperiod}}}%
+        {{hash=0f3fc06fb9fcbb01b9cc0985eaf0a71c}{%
+           family={Thirion},
+           familyi={T\bibinitperiod},
+           given={Bertrand},
+           giveni={B\bibinitperiod}}}%
+        {{hash=721be0317527f44db425f7a97dcab15e}{%
+           family={Grisel},
+           familyi={G\bibinitperiod},
+           given={Olivier},
+           giveni={O\bibinitperiod}}}%
+        {{hash=d3b6c8582cea4e8b6576137b6a72cadc}{%
+           family={Blondel},
+           familyi={B\bibinitperiod},
+           given={Mathieu},
+           giveni={M\bibinitperiod}}}%
+        {{hash=86e647e5c801f3ce733927f75f029463}{%
+           family={Prettenhofer},
+           familyi={P\bibinitperiod},
+           given={Peter},
+           giveni={P\bibinitperiod}}}%
+        {{hash=89d698773eaf2fae761ff0008031c7be}{%
+           family={Weiss},
+           familyi={W\bibinitperiod},
+           given={Ron},
+           giveni={R\bibinitperiod}}}%
+        {{hash=b255e99d411f28c789a231829f765c64}{%
+           family={Dubourg},
+           familyi={D\bibinitperiod},
+           given={Vincent},
+           giveni={V\bibinitperiod}}}%
+        {{hash=a08a00cf90823600b731a138afc28949}{%
+           family={Vanderplas},
+           familyi={V\bibinitperiod},
+           given={Jake},
+           giveni={J\bibinitperiod}}}%
+        {{hash=afb9a37bec11b531f1f0f33793a7f1fe}{%
+           family={Passos},
+           familyi={P\bibinitperiod},
+           given={Alexandre},
+           giveni={A\bibinitperiod}}}%
+        {{hash=9fd9ed8466bbb96364ae008f2a665e6e}{%
+           family={Cournapeau},
+           familyi={C\bibinitperiod},
+           given={David},
+           giveni={D\bibinitperiod}}}%
+        {{hash=281ac3097ec8447c2d26e9f3cfde6082}{%
+           family={Brucher},
+           familyi={B\bibinitperiod},
+           given={Matthieu},
+           giveni={M\bibinitperiod}}}%
+        {{hash=23403cde972dddbdb48efe2bcc07dc3c}{%
+           family={Perrot},
+           familyi={P\bibinitperiod},
+           given={Matthieu},
+           giveni={M\bibinitperiod}}}%
+        {{hash=3b33c2c2b909b62c3cc2650ee3f2cd93}{%
+           family={Duchesnay},
+           familyi={D\bibinitperiod},
+           given={Edouard},
+           giveni={E\bibinitperiod}}}%
+      }
+      \strng{namehash}{9ec95d747bac3417f92265a9a44f8bb4}
+      \strng{fullhash}{b5a839fa52511063a33d83e224d1de47}
+      \strng{fullhashraw}{b5a839fa52511063a33d83e224d1de47}
+      \strng{bibnamehash}{9ec95d747bac3417f92265a9a44f8bb4}
+      \strng{authorbibnamehash}{9ec95d747bac3417f92265a9a44f8bb4}
+      \strng{authornamehash}{9ec95d747bac3417f92265a9a44f8bb4}
+      \strng{authorfullhash}{b5a839fa52511063a33d83e224d1de47}
+      \strng{authorfullhashraw}{b5a839fa52511063a33d83e224d1de47}
+      \field{sortinit}{5}
+      \field{sortinithash}{20e9b4b0b173788c5dace24730f47d8c}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Journal of Machine Learning Research}
+      \field{number}{85}
+      \field{title}{Scikit-learn: Machine Learning in Python}
+      \field{volume}{12}
+      \field{year}{2011}
+      \field{pages}{2825\bibrangedash 2830}
+      \range{pages}{6}
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+
