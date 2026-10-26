@@ -1,122 +1,79 @@
 \section{Results}
 
-Maximum of 1200 words.
+\setcounter{subsection}{1}
+\subsection{Pose-model performance}
 
-The results describe in depth the actual, substantive results achieved, logically
-following from the method used. Name the concrete artefact that (for the client) forms the end product of the delivered work. Indicate what type of artefact it is, for example a design, an architecture, a model or a software application. Then describe in depth the content of the artefact based on the (which?) requirements, the (which?) relevant insights from grounding and the (which?) relevant insights from
-activities within the design cycle. Use illustrations where useful, this is very clarifying compared to texts in (long) paragraphs only. Where possible, also use lists and/or tables for readability.
+The benchmark compared BlazePose, MoViNet-A0, TSM-MobileNetV2, ViTPose and
+MoveNet as candidate components for the perception pipeline. MoveNet Lightning
+int8 achieved an average of 23.80 FPS, with a mean pose-inference time of
+approximately 34~ms on the Reachy Mini. This was the most suitable result for
+the project's CPU-only deployment target. The model also produces the COCO-17
+keypoints expected by the temporal feature and recognition code.
 
-% Code below is an example of how various things in LaTeX can be inserted, such as code snippets, tables, etc.
+The comparison also exposed deployment constraints. BlazePose and ViTPose are
+useful comparison models, but the robot cannot use the available BlazePose
+MediaPipe binary because it requires AES instructions unavailable on the
+Reachy's Cortex-A72; ViTPose's detector-and-pose pipeline is intended for the
+laptop or simulation environment. MoViNet-A0 and TSM-MobileNetV2 were
+considered for temporal classification rather than selected as replacements
+for the keypoint-based pipeline. Consequently, MoveNet int8 was used for
+robot inference, while the shared downstream representation remained
+model-independent.
 
-\subsection{Examples}
+\subsection{Wave recognition}
 
-Inserting an image can be done as followS:
+On two recorded sessions with our own robot (416 windows), the rule-based
+detector reached F1 0.811 (precision 1.000, recall 0.682). The NTU-trained
+forest, which never saw these recordings, reached F1 0.951 and outperformed a
+forest trained on the sessions themselves (F1 0.884, historical only). On
+unseen NTU subjects, where the negatives include deliberately confusable
+gestures (salute, selfie and brushing hair), F1 was 0.556. On HMDB51 movie
+clips it was 0.065, a deliberately pessimistic external check.
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=.8\linewidth]{figures/Research-onion-4.png}
-    \caption{The research onion (adopted from \cite{siti2020}). [for illustration purposes only, so remove from the EA].}
-    \label{fig:onion}
-\end{figure}
+\subsection{Six-class action recognition}
 
-You may want to insert \texttt{Python} code snippets to show the design of your algorithm. We created a \texttt{Python} macro in the preamble that makes it easy to insert snippets of code. This environment takes two arguments \verb|\begin{python}(caption)(label)| where:
-\begin{enumerate}
-    \item \textit{caption} can be used to provide a description for this code listing
-    \item \textit{label} can be used as an identifier to reference this listing in the text
-\end{enumerate}
-
-\noindent As an example, consider listing~\ref{lst:foo}.
-
-\begin{python}{Important algorithm}{lst:foo}
-def foo(x: int, y: float) -> str:
-    z = x + y
-    return "Hello " + z
-\end{python}
-
-\noindent There is also the option to write pseudo code in \LaTeX. See the following example in algorithm~\ref{alg:wfc}. 
-
-\begin{algorithm}[H]
-\caption{Simplified version of the Wave Function Collapse algorithm}\label{alg:wfc}
-\hspace*{\algorithmicindent} \textbf{Input}: Sample image $img$;\\
-\hspace*{\algorithmicindent} \textbf{Output}: Rendered output image
-\begin{algorithmic}[1]
-\Function{WFC}{$img$}
-\State patterns := ExtractFromSample($img$);
-\State ConstructIndex(patterns);
-\State InitialiseGrid(patterns);
-\Repeat 
-    \State $p$ := Observe();
-    \If{$p = null$}
-        \State \textbf{break};
-    \EndIf
-    \State Collapse($p$);
-    \State Propagate();
-\Until{all variables are observed}
-\State \Return ObservationsToOutput(); 
-\EndFunction
-\end{algorithmic}
-\end{algorithm}
-
-\noindent Often, you evaluate your artifacts quantitatively, elicit requirements from stakeholders, or may aggregate guidelines from the contemporary literature. In these cases, it can be useful to display these results in a table. See table~\ref{tab:example1},~\ref{tab:example2}, and~\ref{tab:example3} for various table examples. 
-
-\def\arraystretch{1.5}%  1 is the default, change whatever you need
 \begin{table}[H]
     \centering
-    \caption{Confusion matrix for two classes.}
-    \label{tab:example1}
-    \vspace{-2mm}
-    \begin{tabular}{|c|c|c|c|}
-    \hline
-        & \multicolumn{3}{c|}{\textit{Predicted class}} \\\hline
-        \textit{True class} & \textbf{Positive} & \textbf{Negative} & \textit{Total} \\\hline
-        \textbf{Positive} & $tp$: true positive & $fn$: false negative & $p$\\\hline
-        \textbf{Negative} & $fp$: false positive & $tn$: true negative & $n$\\\hline
-        \textit{Total} & $p'$ & $n'$ & $N$\\\hline
+    \caption{Out-of-fold F1 on held-out subjects or footage groups. Waist-up
+    framing is simulated by removing the hip, knee and ankle keypoints.}
+    \label{tab:action-f1}
+    \begin{tabular}{lcc}
+        \toprule
+        Class & Full body & Waist-up \\
+        \midrule
+        none & 0.902 & 0.855 \\
+        wave & 0.918 & 0.873 \\
+        squat & 0.922 & 0.803 \\
+        clapping & 0.898 & 0.899 \\
+        jumping\_jacks & 0.887 & 0.861 \\
+        pushup & 0.381 & 0.137 \\
+        \bottomrule
     \end{tabular}
 \end{table}
 
-\begin{table}[H]
-    \centering
-    \caption{Evaluation results of the selected hypothesis classes over 98 repetitions of training/testing splits for both the baseline as well as the difference datasets. Mean AUC and cross-entropy loss are reported. }\label{tab:example2}
-    \vspace{-2mm}
-    \makebox[\linewidth]{
-        \begin{tabular}{l|cc|cc}
-            \toprule
-                \multicolumn{1}{c}{} & \multicolumn{2}{c}{\textbf{Baseline}} & \multicolumn{2}{c}{\textbf{Difference}} \\ 
-            \cmidrule(rl){2-3} \cmidrule(rl){4-5}
-                \textbf{Model} & \emph{AUC} & \emph{Cross-entropy} & \emph{AUC} & \emph{Cross-entropy} \\
-            \midrule
-                Random Forest & $0.605 \pm 0.010$ & $12.227 \pm 0.332$ & $0.609 \pm 0.012$ & $12.281 \pm 0.377$ \\
-                XGBoost Classifier & $0.617 \pm 0.014$ & $12.474 \pm 0.456$ & $0.612 \pm 0.012$ & $12.314 \pm 0.394$ \\
-                Support Vector Machine & $0.560 \pm 0.017$ & $15.220 \pm 0.631$ & $0.511 \pm 0.007$ & $14.453 \pm 0.242$ \\
-                Multi-Layer Perceptron & $\bm{0.622 \pm 0.012}$ & $\bm{12.096 \pm 0.423}$ & $\bm{0.618 \pm 0.011}$ & $\bm{12.155 \pm 0.355}$ \\
-            \bottomrule
-        \end{tabular}
-    }
-\end{table}
+These are in-domain scores. A source confound inflates wave and
+clapping, both taken from the studio-recorded NTU corpus. On our
+robot recordings wave drops to 0.581, the figure to quote for a robot
+in a room, and clapping has not yet been measured on robot footage.
+Squats are almost never false positives (precision 0.998) but miss about one
+repetition in seven (one in three waist-up). Push-ups (19 training groups,
+per-fold F1 0.06--0.71) are insufficiently measured and are not demonstrated.
+Without crop augmentation, waist-up F1 for wave, squat and
+clapping fell to 0.000.
 
-\begin{table}[H]
-    \centering
-    \caption{Hyperparameter search space for the Random Forest classifier.}\label{tab:example3}
-    \vspace{-2mm}
-    \makebox[\linewidth]{
-        \begin{tabularx}{\textwidth}
-        % {lXr}
-         {
-            >{\raggedright\arraybackslash}p{.24\textwidth}
-            >{\raggedright\arraybackslash}p{.4\textwidth}
-            X
-        }
-            \toprule
-                \textbf{Parameter} & \textbf{Description} & \textbf{Values} \\
-            \midrule
-                \texttt{n\_estimators} & Number of decision tree estimators. & $[50, 5000]$ with steps of 50.\\
-                \texttt{min\_samples\_leaf} & Minimum number of instances required at a leaf node. & $[5, 50]$ with steps of 5.\\
-                \texttt{max\_depth} & Maximum depth of the decision trees. & $[4, 24]$\\
-                \texttt{criterion} & Function to measure quality of a split. & \texttt{'gini'} or \texttt{'entropy'}\\
-                \texttt{max\_features} & For $d$ features, it is the $k<d$-features to consider when looking for the best split. & $\sqrt{d}$ or $\log_2(d)$, or fractions of $d$: 0.1, 0.3, 0.5, 0.7, 0.9. \\
-                \texttt{bootstrap} & Whether bootstrap samples are used when building trees. & \texttt{True} or \texttt{False}\\
-            \bottomrule
-        \end{tabularx}
-    }
-\end{table}
+\subsection{Engineering results}
+
+\begin{itemize}
+    \item One model file serves both simulation and robot. The six-class model
+    is 5.3~MB and the wave model 0.25~MB, with no scikit-learn dependency at
+    runtime.
+    \item On the robot, the full wave pipeline runs at 8.7 FPS: 34~ms pose
+    estimation and 3~ms motion processing (features and forest). The camera
+    (approximately 10 FPS) is the remaining bottleneck.
+    \item Antenna gestures are rendered smoothly at 50~Hz independently of
+    the vision rate. Head and body following reached 75 degrees of gaze,
+    compared with 35 degrees for the head alone.
+    \item Preflight turned the robot's frequent post-boot state (asleep,
+    motors off and camera released) into an automatic fix rather than a
+    runtime failure.
+\end{itemize}

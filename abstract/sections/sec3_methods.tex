@@ -1,13 +1,93 @@
 
 \section{Methods}
 
-Maximum of 1200 words. 
+\setcounter{subsection}{1}
+\subsection{Requirements and software requirements specification}
 
-The method describes the entire approach, so that others can in principle reproduce the work. The description of the method takes place at 3 levels. 
+The functional and non-functional requirements were derived from the project
+description and meetings with the client. They were consolidated in a software
+requirements specification (SRS), which served as the reference for design and
+evaluation. The functional requirements cover perception and local processing,
+robot behaviour and interaction, activity and exercise recognition, assessment
+and feedback, and session management. The non-functional requirements cover
+privacy, recognition accuracy, reliability, usability and safety. The complete
+SRS document contains the detailed requirement statements and is included as an
+attachment to the article.
 
-First, the chosen overall method is described, in line with the objective of the assignment. Within the HBO-ICT program for example, assignments often consist of creating a (partly) innovative artifact (product or service). Design Science Research (DSR) is the standard method within the program for such design-oriented research. 
+\subsection{Pose-model research and selection}
 
-Subsequently, the concrete steps carried out within the chosen method are described in the form of phases and/or activities. It becomes clear whether these were carried out sequentially, parallel and/or iteratively. An illustration is highly recommended here. Specific from the DSR method should in any case be included: identifying requirements, carrying out grounding, designing, developing and testing the product or service and
-disseminating the results of the work carried out. The field test from the DSR framework is optional, as a rule students will not arrive at a product that is ripe enough for a field test within the boundaries of the education.
+We reviewed candidate models for human pose detection and temporal activity
+analysis under the Reachy Mini's CPU and camera constraints. The candidates
+included BlazePose for fast 2D pose detection, ViTPose as a transformer-based
+2D estimator, WHAM and CameraHMR for 3D motion or pose-and-shape estimation,
+MoveNet for lightweight 2D pose estimation, SAM2 for segmentation, PySlowFast
+as a video-classification framework, FSPose for fused-heatmap pose estimation,
+GraphEnet for graph-based pose estimation, YOLOPose for pose estimation using
+the YOLO object-detection framework, MoViNets for efficient video recognition,
+and TSM-MobileNetV2 for lightweight temporal modelling.
 
-Last but not least, the methods/methods used specifically within the phase(s) / activity(ies) are described concretely and in depth, where possible consisting of best or good practices. It is always important that the choices made are substantiated in relation to the context and objective of the assignment
+BlazePose, MoViNet-A0, TSM-MobileNetV2, ViTPose, YOLOPose and MoveNet were
+benchmarked under comparable conditions. We recorded throughput and mean
+pose-inference time, while considering whether the model could run on the robot
+and produce the COCO-17 representation required by the downstream feature and
+recognition pipeline. The selected model was MoveNet Lightning int8 through
+LiteRT, because it provided the most suitable trade-off between speed,
+keypoint compatibility and deployment feasibility.
+
+\setcounter{subsection}{5}
+\subsection{Training, export and inference}
+
+The recognition models were trained without recording or processing any video.
+We used COCO-17 skeletons published by OpenMMLab for NTU RGB+D 60
+\cite{shahroudy2016ntu} (wave, clapping) and UCF101
+\cite{soomro2012ucf101} (pushup, squat, jumping\_jacks). HMDB51 was used only
+as an external test set. All other dataset classes were labelled none. Each clip was resampled
+from 30 to approximately 10 FPS to match the robot camera. It was then
+windowed by the same feature code that runs live: 1.5~s windows with 9
+features for the binary wave model, and 3~s windows with 34 features for the
+six-class action model. To reflect the table-mounted camera, every clip was
+also windowed with leg and hip keypoints removed.
+
+Random forests were trained with scikit-learn
+\cite{pedregosa2011scikit}: 100 trees of depth 6 for the wave model and 300
+class-balanced trees for the action model. They were evaluated with five-fold
+GroupKFold by subject or footage group, following
+\cite{saeb2017need}, and all precision, recall and F1 scores come from
+out-of-fold predictions. Instead of taking the most probable class, we tuned a
+confidence floor for each class on these predictions; windows below the floor
+are labelled none. The final forests were fitted on all windows and
+exported to a compressed .npz file containing each tree's node
+arrays. On the robot, a NumPy-only implementation walks these trees and
+reproduces scikit-learn's predict\_proba, so scikit-learn is not
+needed at runtime.
+
+\subsection{Robot integration (SDK and REST API)}
+
+The applications use the Reachy Mini Python SDK (reachy\_mini 1.10.0,
+matched to the daemon version) for motion, and the daemon REST API (port 8000)
+for state management. Before any movement, camera or tracking use, a
+standard-library preflight checks, in order, network reachability, daemon and
+backend state, running apps and moves, motor mode, sleep pose, camera
+ownership and tracker frames. With auto-fix enabled, it enables the motors,
+plays the wake-up move and re-acquires the camera. It returns an explicit
+ready, not-ready or unreachable status. A context manager wraps preflight, SDK
+connection and clean-up (stopping head tracking and, optionally, returning to
+sleep), so every application starts and ends in a known state.
+
+Because the vision loop runs at approximately 10 FPS while the daemon controls
+at 50 Hz, a dedicated thread streams set\_target commands at 50 Hz.
+Each recognised action is answered with a distinct antenna signature
+(amplitude, frequency, whole number of cycles ending at the neutral pose), so
+observers can tell which action was recognised. Head and body following use an
+integrating controller on the image error of the torso centre. Body yaw extends
+the reach of the head, which is limited to 60 degrees relative to the body.
+
+Further integrations are: (i) the annotated camera view is served as an MJPEG
+stream, so the robot runs headless while being observed from a browser; (ii) a
+remote mode streams low-resolution frames (192\(\times\)108) to a laptop GPU
+for pose inference and receives keypoints over HTTP, while session logic,
+speech and motion stay on the robot; and (iii) in the coach workflow the robot
+trains a personal model on its own CPU, running scikit-learn in a low-priority
+subprocess so camera and head-following loops stay responsive and a failed fit
+never overwrites the previous model. Deployment uses an isolated virtual
+environment that leaves the robot's system environments untouched.
