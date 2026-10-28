@@ -72,3 +72,70 @@ In CMAS mode the prototype recognises that four CMAS items were performed; it do
 Items~12 (chair rise) and~14 (pick-up) are classified by a three-class forest (none, chair rise, pick-up) trained on NTU RGB+D alone (actions \enquote{standing up} and \enquote{pick up}).
 Items~7 and~8 (arms straight above the head, and for how long) use a geometric rule on single frames, because a held posture has no movement for a window to learn.
 Item~13 (stool step) was left out: no public dataset contains it and none was recorded.
+
+\subsection{Pose-model performance}
+
+
+
+The benchmark compared BlazePose, MoViNet-A0, TSM-MobileNetV2, ViTPose and
+MoveNet as candidate components for the perception pipeline. MoveNet Lightning
+int8 achieved an average of 23.80 FPS, with a mean pose-inference time of
+approximately 34~ms on the Reachy Mini. This was the most suitable result for
+the project's CPU-only deployment target. The model also produces the COCO-17
+keypoints expected by the temporal feature and recognition code.
+
+The comparison also exposed deployment constraints. BlazePose and ViTPose are
+useful comparison models, but the robot cannot use the available BlazePose
+MediaPipe binary because it requires AES instructions unavailable on the
+Reachy's Cortex-A72; ViTPose's detector-and-pose pipeline is intended for the
+laptop or simulation environment. MoViNet-A0 and TSM-MobileNetV2 were
+considered for temporal classification rather than selected as replacements
+for the keypoint-based pipeline. Consequently, MoveNet int8 was used for
+robot inference, while the shared downstream representation remained
+model-independent.
+
+\subsection{Wave recognition}
+
+
+
+
+On two recorded sessions with our own robot (416 windows), the rule-based
+detector reached F1 0.811 (precision 1.000, recall 0.682). The NTU-trained
+forest, which never saw these recordings, reached F1 0.951 and outperformed a
+forest trained on the sessions themselves (F1 0.884, historical only). On
+unseen NTU subjects, where the negatives include deliberately confusable
+gestures (salute, selfie and brushing hair), F1 was 0.556. On HMDB51 movie
+clips it was 0.065, a deliberately pessimistic external check.
+
+\subsection{Six-class action recognition}
+
+
+
+\begin{table}[H]
+    \centering
+    \caption{Out-of-fold F1 on held-out subjects or footage groups. Waist-up
+    framing is simulated by removing the hip, knee and ankle keypoints.}
+    \label{tab:action-f1}
+    \begin{tabular}{lcc}
+        \toprule
+        Class & Full body & Waist-up \\
+        \midrule
+        none & 0.902 & 0.855 \\
+        wave & 0.918 & 0.873 \\
+        squat & 0.922 & 0.803 \\
+        clapping & 0.898 & 0.899 \\
+        jumping\_jacks & 0.887 & 0.861 \\
+        pushup & 0.381 & 0.137 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+These are in-domain scores. A source confound inflates wave and
+clapping, both taken from the studio-recorded NTU corpus. On our
+robot recordings wave drops to 0.581, the figure to quote for a robot
+in a room, and clapping has not yet been measured on robot footage.
+Squats are almost never false positives (precision 0.998) but miss about one
+repetition in seven (one in three waist-up). Push-ups (19 training groups,
+per-fold F1 0.06--0.71) are insufficiently measured and are not demonstrated.
+Without crop augmentation, waist-up F1 for wave, squat and
+clapping fell to 0.000.
