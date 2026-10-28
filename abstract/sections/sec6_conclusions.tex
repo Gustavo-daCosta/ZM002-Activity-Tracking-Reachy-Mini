@@ -1,13 +1,45 @@
-\section{Conclusions}
+\section{Conclusion}
+The goal was to find out whether the Reachy Mini can detect a person,
+recognise their activity and give expressive feedback within the limits
+of its own CPU. For the technical part of that goal the answer is
+The complete pipeline runs on the robot's Raspberry Pi CM4
+without a GPU or a laptop. Pose estimation takes about 34 ms per
+frame, features and forest a few milliseconds, and the camera's 10~FPS,
+not the computation, sets the pace. The same code and models run in
+simulation, so they are developed on a laptop and deployed unchanged.
+Recognised actions are answered in real time with antenna signatures and
+head and body following.
 
-Maximum of 400 words.
-The conclusion describes the extent to which the original goal of the assignment has been met with the help of the achieved (factual, substantive)
-results. In addition, any recommendations for follow-up work are described:
-\begin{itemize}
-    \item Which artefacts have/have not been realised?
-    \item To what extent have any boundary conditions/requirements been met?
-    \item To what extent can the results be used/used for the original
-purpose?
-    \item What recommendations are made on the basis of this, both towards practice and
-any necessary follow-up research into previously carried out work?
-\end{itemize}
+The answer to ``how well'' is more limited. In live use, wave, clapping
+and jumping jacks were reliable enough to demonstrate, and squats were
+recognised with about one repetition in seven missed. Push-ups were not.
+Scores on public datasets overstate what happens in a room: the
+six-class model recognises waves with $F_1 = 0.918$ on dataset subjects
+but $F_1 = 0.581$ on our robot recordings. For the CMAS items, pick-up
+held up in a room ($F_1 = 0.933$). Chair rise and arms above the head
+were recognised live on the robot, but they have not yet been measured
+on a correctly performed room recording. The robot's position also
+matters: it must see the whole person, and a waist-up view costs
+recognition.
+
+The prototype, its models, the training and export tools, and the coach
+were realised. A CMAS score, the stool-step item and clinical validation
+were not; they were outside the scope. The ``engaging'' part of the
+research question was not evaluated, since no user study was done. The
+prototype is therefore a research platform: it shows that
+monitoring at home with this robot is technically feasible, but it
+cannot yet be used to monitor children with JDM.
+
+That said, there are four recommended next steps:
+\begin{enumerate}
+    \item Record labelled sessions in real rooms through the robot's own
+    camera, following the CMAS instructions, and use them as the reference
+    for room performance.
+    \item Collect data for the classes that lack it: push-ups, clapping
+    on robot footage, and the stool step.
+    \item Run a small user study with children and families to measure
+    engagement, which the research question assumes, but this project did
+    not test.
+    \item If CMAS scoring becomes the goal, define the scoring criteria
+    with the WKZ specialists and validate the system against their scores.
+\end{enumerate}
