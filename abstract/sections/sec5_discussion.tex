@@ -1,12 +1,7 @@
 \section{Discussion}
 
-Maximum of 400 words.
+Several choices contributed positively to the results. Training on skeletons from public datasets gave the project a fast start: working recognition models existed before any data of our own had been recorded, and no video had to be processed. That head start had a limit, however. The public datasets did not cover every exercise the project needed, and they did not show a person the way the robot sees one, so we later had to record our own sessions to train and test the models that mattered most. A second positive choice was to run the same code in simulation and on the robot. Features, models and feedback were developed and checked on a laptop, then deployed to the robot unchanged, which kept the two environments from drifting apart. Finally, short design cycles on the physical robot exposed problems that no laptop test would have shown. They revealed that BlazePose cannot run on the robot's processor, and that letterboxing the wide-angle image left the person too small to detect reliably. Each problem was found and fixed within days, and the crop around the previous pose raised the share of frames with a detected person from 52 percent to 72 percent. \newline
 
-The discussion describes a critical view (reflection) of the author(s) on the work delivered as a whole:
-\begin{itemize}
-    \item Which aspects have contributed positively to the results achieved and why?
-    \item Which aspects have been limiting for the results achieved and why?
-\end{itemize}
+Other aspects limited the results. The robot's camera does not match the image quality of a laptop or phone camera. Its wide-angle view leaves a person only a small part of the image, so keypoints are less certain than in simulation. The CPU, without a GPU, also restricted the choice to a lightweight pose model. A further limit was the difference between the training videos and real use. The public datasets were recorded in studios or taken from films, with other backgrounds, camera angles and sometimes several people in view. The robot, in contrast, sees one person in a home room from table height. This difference lowered recognition quality outside the datasets: waves, for example, scored F1 0.918 on dataset subjects but 0.581 on our robot recordings. The robot was also not always available to the team. The simulation largely mitigated this risk, because most of the development could continue without it. Lastly, engagement could not be measured, because the prototype could not be tested with real users. Whether children find the robot an engaging exercise buddy therefore remains an open question.
 
-Aspects can be considered broadly here. For example, process choices (method),
-design decisions (results) or other (whether or not externally determined) aspects that have influenced the results
+\newpage
