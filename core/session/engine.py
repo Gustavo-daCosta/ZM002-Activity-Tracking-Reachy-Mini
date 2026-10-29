@@ -18,10 +18,16 @@ import time
 from typing import Callable, Optional
 
 from core.motion.actions import ActionMonitor
+from core.motion.cmas import OverheadHold
 from core.motion.voice import ActionVoice
 from core.session.config import (
+    HOLD_ACTION,
+    HOLD_CHEER_EVERY_S,
+    HOLD_MIN_S,
     ExerciseRound,
     SessionPlan,
+    get_hold_cheer_speech,
+    get_hold_complete_speech,
     get_outro_speech,
     get_rep_speech,
     get_round_announcement_speech,
@@ -36,6 +42,7 @@ from core.session.gestures import (
     ROUND_INTRO_GESTURE,
     WELCOME_GESTURE,
     play_exercise_demo,
+    play_gesture,
     play_gesture_with_speech,
 )
 
@@ -75,8 +82,10 @@ class SessionEngine:
         voice: ActionVoice,
         mini=None,
         on_state_change: Optional[Callable[[SessionState, str], None]] = None,
+        demos: bool = True,
     ) -> None:
         self.plan = plan
+        self.demos = demos  # demonstrate each exercise with the robot's body before asking for it
         self.monitor = monitor
         self.voice = voice
         self.mini = mini
@@ -89,6 +98,9 @@ class SessionEngine:
         self.rounds_completed: int = 0
         self.round_start_time: float = 0.0
         self._round_timed_out: bool = False
+        # Arms-up rounds (HOLD_ACTION): timed by a rule, not counted by the classifier.
+        self.hold = OverheadHold()
+        self._cheers_said: int = 0
 
         # --- Thread safety -------------------------------------------------
         # A single background thread executes all blocking work (goto_target,
@@ -132,11 +144,28 @@ class SessionEngine:
         if cur is None:
             return
 
+        if cur.action == HOLD_ACTION:
+            self._update_hold(now, keypoints, cur)
+            return
+
         # Run pose → motion classification
         self.monitor.update(now, keypoints)
 
         # Check completion triggers (target reached or timeout)
         if self.reps_this_round >= cur.target_reps:
+            self._trigger_round_complete(now, timed_out=False)
+        elif now - self.round_start_time >= cur.timeout_s:
+            self._trigger_round_complete(now, timed_out=True)
+
+    def _update_hold(self, now: float, keypoints, cur: ExerciseRound) -> None:
+        """Arms-up round: cheer every few seconds, finish when the arms come down or time runs out."""
+        held_s = self.hold.update(now, keypoints, self.monitor.min_score, self.monitor.window.aspect_ratio)
+        cheers = int(held_s) // HOLD_CHEER_EVERY_S
+        if cheers > self._cheers_said:
+            self._cheers_said = cheers
+            if self.voice is not None:
+                self.voice.speak(get_hold_cheer_speech(cheers * HOLD_CHEER_EVERY_S), non_blocking=True)
+        if held_s == 0.0 and self.hold.best_s >= HOLD_MIN_S:
             self._trigger_round_complete(now, timed_out=False)
         elif now - self.round_start_time >= cur.timeout_s:
             self._trigger_round_complete(now, timed_out=True)
@@ -232,7 +261,7 @@ class SessionEngine:
             gesture=WELCOME_GESTURE,
             voice=self.voice,
             speech_text=welcome_text,
-            wait_for_voice=True,
+            wait_for_voice=False,  # the round intro waits for all queued speech
         )
         self._task_round_intro()
 
@@ -245,6 +274,8 @@ class SessionEngine:
 
         self.reps_this_round = 0
         self._round_timed_out = False
+        self.hold = OverheadHold()
+        self._cheers_said = 0
         self.monitor.set_target_action(cur.action, callback=self._on_target_rep_detected)
 
         announcement_text = get_round_announcement_speech(
@@ -256,26 +287,19 @@ class SessionEngine:
             SessionState.ROUND_INTRO,
             f"Introducing round {self.current_round_idx + 1}: {cur.action}",
         )
-        play_gesture_with_speech(
-            mini=self.mini,
-            gesture=ROUND_INTRO_GESTURE,
-            voice=self.voice,
-            speech_text=announcement_text,
-            wait_for_voice=True,
-        )
-
-        # Announce the demonstration first, wait for speech to finish, then move.
-        # The server pauses head/body following while the engine is in ROUND_INTRO,
-        # so the gesture cannot fight the live tracking controller.
-        demo_text = get_exercise_demo_speech(cur.action)
-        if self.voice is not None:
-            self.voice.speak(demo_text, non_blocking=False)
-        play_exercise_demo(self.mini, cur.action)
-
-        # Only invite the user to perform the movement after the robot has shown it.
+        # Queue every sentence before waiting: the voice synthesizes the next one while the current one plays.
         prompt_text = get_round_prompt_speech(cur.action, cur.target_reps)
-        if self.voice is not None:
-            self.voice.speak(prompt_text, non_blocking=False)
+        self._say(announcement_text, get_exercise_demo_speech(cur.action) if self.demos else prompt_text)
+        play_gesture(self.mini, ROUND_INTRO_GESTURE)
+        self._wait_for_voice()
+
+        if self.demos:
+            # Move only once the demonstration has been announced. The server pauses head/body following
+            # while the engine is in ROUND_INTRO, so the gesture cannot fight the live tracking controller.
+            play_exercise_demo(self.mini, cur.action)
+            # Only invite the user to perform the movement after the robot has shown it.
+            self._say(prompt_text)
+            self._wait_for_voice()
 
         self.round_start_time = time.perf_counter()
         self._transition(
@@ -286,22 +310,24 @@ class SessionEngine:
     def _task_round_feedback(self) -> None:
         """Blocking: congratulate, rest, then advance to next round or outro."""
         cur = self.plan.rounds[self.current_round_idx]  # capture before advancing
-        feedback_text = get_round_complete_speech(
-            action=cur.action,
-            reps_done=self.reps_this_round,
-            timed_out=self._round_timed_out,
-        )
+        if cur.action == HOLD_ACTION:
+            feedback_text = get_hold_complete_speech(self.hold.best_s)
+        else:
+            feedback_text = get_round_complete_speech(
+                action=cur.action,
+                reps_done=self.reps_this_round,
+                timed_out=self._round_timed_out,
+            )
         play_gesture_with_speech(
             mini=self.mini,
             gesture=ROUND_COMPLETE_GESTURE,
             voice=self.voice,
             speech_text=feedback_text,
-            wait_for_voice=True,
+            wait_for_voice=False,  # the next intro (or the outro) waits for all queued speech
         )
 
         self.current_round_idx += 1
         if self.current_round_idx < len(self.plan.rounds):
-            time.sleep(1.0)  # brief inter-round rest
             self._task_round_intro()
         else:
             self._task_outro()
@@ -326,6 +352,17 @@ class SessionEngine:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _say(self, *texts: str) -> None:
+        """Queue sentences without waiting for them."""
+        if self.voice is not None:
+            for text in texts:
+                self.voice.speak(text, non_blocking=True)
+
+    def _wait_for_voice(self) -> None:
+        """Block until everything queued has been spoken (several sentences can be queued)."""
+        if self.voice is not None:
+            self.voice.wait(timeout=60.0)
 
     def _transition(self, new_state: SessionState, detail: str = "") -> None:
         """Record state change and notify optional listener."""

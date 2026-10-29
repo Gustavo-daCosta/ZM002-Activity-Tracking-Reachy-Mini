@@ -7,8 +7,11 @@ A guided workout session where the robot acts as an interactive coach:
 - Friendly, expressive gestures combining head nods, tilts, and antenna choreographies
   during greetings, round transitions, and celebrations.
 
-Run directly on the robot (local camera, no window):
-    ssh reachy 'cd ~/wave_app && ~/wave_env/bin/python -m robot.apps.exercise_session --reps-per-round 1'
+Run directly on the robot (local camera, no window). Picamera2 is importable only from ~/camera_env:
+    ssh reachy 'cd ~/wave_app && ~/camera_env/bin/python -m robot.apps.exercise_session --reps-per-round 1'
+
+CMAS session (chair rise, pick-up, arms held up and timed), annotated view at http://<robot>:8090/:
+    ssh -t reachy 'cd ~/wave_app && ~/camera_env/bin/python -m robot.apps.exercise_session --cmas --stream-port 8090'
 
 Run from this computer over network (WebRTC video, optional browser stream):
     reachy_mini_env/bin/python -m robot.apps.exercise_session --host 192.168.137.171 --stream-port 8080
@@ -24,11 +27,13 @@ import time
 
 import cv2
 
-from core.motion.actions import DEFAULT_ACTION_MODEL, ActionDetector, ActionMonitor
+from core.motion.actions import CMAS_MODEL, DEFAULT_ACTION_MODEL, ActionDetector, ActionMonitor
 from core.motion.antennas import NEUTRAL_ANTENNAS
 from core.motion.voice import ActionVoice, DEFAULT_VOICE
 from core.pose_backends import BACKENDS, create_backend
-from core.session.config import DEFAULT_REPS_PER_ROUND, DEFAULT_TIMEOUT_S, SessionPlan
+from core.session.config import (
+    CMAS_EXERCISES, DEFAULT_REPS_PER_ROUND, DEFAULT_TIMEOUT_S, HOLD_ACTION, HOLD_TIMEOUT_S, SessionPlan,
+)
 from core.session.engine import SessionEngine, SessionState
 from core.stream import MjpegServer
 from core.vision import downscale, draw_coco_skeleton, put_text
@@ -45,15 +50,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"number of reps required per exercise round (default: {DEFAULT_REPS_PER_ROUND})",
     )
     parser.add_argument(
+        "--cmas",
+        action="store_true",
+        help="CMAS session: the chair rise / pick-up model, rounds " + ",".join(CMAS_EXERCISES),
+    )
+    parser.add_argument(
         "--rounds",
-        default="squat,clapping,jumping_jacks,wave",
-        help="comma-separated actions for the workout rounds (default: squat,clapping,jumping_jacks,wave)",
+        default=None,
+        help="comma-separated actions for the workout rounds (default: squat,clapping,jumping_jacks,wave; "
+             f"with --cmas: {','.join(CMAS_EXERCISES)})",
     )
     parser.add_argument(
         "--timeout",
         type=float,
         default=DEFAULT_TIMEOUT_S,
-        help=f"seconds allowed per exercise round (default: {DEFAULT_TIMEOUT_S})",
+        help=f"seconds allowed per exercise round (default: {DEFAULT_TIMEOUT_S}; "
+             f"{HOLD_ACTION} rounds always get {HOLD_TIMEOUT_S:g})",
     )
     parser.add_argument(
         "--voice-model",
@@ -79,12 +91,16 @@ def draw_hud(frame, engine: SessionEngine, result, min_score: float) -> None:
             2,
             (255, 255, 255),
         )
-        put_text(
-            frame,
-            f"Reps: {engine.reps_this_round} / {cur.target_reps}",
-            3,
-            (0, 255, 255),
-        )
+        if cur.action == HOLD_ACTION:
+            text, colour = engine.hold.panel_line()
+            put_text(frame, text, 3, colour)
+        else:
+            put_text(
+                frame,
+                f"Reps: {engine.reps_this_round} / {cur.target_reps}",
+                3,
+                (0, 255, 255),
+            )
         if state == SessionState.ACTIVE:
             elapsed = time.perf_counter() - engine.round_start_time
             remaining = max(0.0, cur.timeout_s - elapsed)
@@ -106,7 +122,8 @@ def main() -> None:
     """Entry point for robot exercise session app."""
     args = parse_args()
 
-    exercises = [e.strip() for e in args.rounds.split(",") if e.strip()]
+    rounds = args.rounds or (",".join(CMAS_EXERCISES) if args.cmas else "squat,clapping,jumping_jacks,wave")
+    exercises = [e.strip() for e in rounds.split(",") if e.strip()]
     if not exercises:
         raise SystemExit("Error: at least one exercise must be provided in --rounds.")
 
@@ -116,11 +133,17 @@ def main() -> None:
         timeout_s=args.timeout,
     )
 
-    detector = ActionDetector(DEFAULT_ACTION_MODEL)
+    model_path = CMAS_MODEL if args.cmas else DEFAULT_ACTION_MODEL
+    detector = ActionDetector(model_path)
     if not detector.available:
         raise SystemExit(
-            f"No action model at {DEFAULT_ACTION_MODEL}. Deploy it with robot/deploy.sh."
+            f"No action model at {model_path}. Deploy it with robot/deploy.sh."
         )
+    # A round the model cannot recognize would only ever time out.
+    unknown = set(exercises) - set(detector.classes) - {HOLD_ACTION}
+    if unknown:
+        raise SystemExit(f"Error: {model_path.name} cannot recognize {', '.join(sorted(unknown))}; "
+                         f"it knows {', '.join(detector.classes)} (plus {HOLD_ACTION}).")
 
     print(f"Workout Plan: {len(plan.rounds)} rounds, {plan.reps_per_round} reps per round.")
     print("Connecting to robot...")
@@ -184,6 +207,7 @@ def main() -> None:
             monitor=monitor,
             voice=voice,
             mini=mini,
+            demos=not args.cmas,  # the CMAS items have no intuitive body demonstration
         )
 
         print("\n" + "=" * 60)

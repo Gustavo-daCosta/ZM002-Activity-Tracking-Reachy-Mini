@@ -8,8 +8,15 @@ from typing import Sequence
 DEFAULT_REPS_PER_ROUND: int = 1
 DEFAULT_TIMEOUT_S: float = 30.0
 
+# CMAS items 7/8: a held posture timed by `core.motion.cmas.OverheadHold`, not a classifier class.
+HOLD_ACTION: str = "arms_up"
+HOLD_TIMEOUT_S: float = 60.0
+HOLD_MIN_S: float = 1.0  # a shorter hold is a false start: the round keeps waiting
+HOLD_CHEER_EVERY_S: int = 5
+
 # Supported demonstrable exercises in the repository
 SUPPORTED_EXERCISES: tuple[str, ...] = ("squat", "clapping", "jumping_jacks", "wave")
+CMAS_EXERCISES: tuple[str, ...] = ("chair_rise", "pick_up", HOLD_ACTION)
 
 EXERCISE_NOUNS: dict[str, tuple[str, str]] = {
     # action_key: (singular, plural)
@@ -20,6 +27,9 @@ EXERCISE_NOUNS: dict[str, tuple[str, str]] = {
     "pushup":        ("push-up", "push-ups"),
     "arm_raise":     ("arm raise", "arm raises"),
     "side_bend":     ("side bend", "side bends"),
+    "chair_rise":    ("chair rise", "chair rises"),
+    "pick_up":       ("pick-up", "pick-ups"),
+    HOLD_ACTION:     ("arms up", "arms up"),
 }
 
 
@@ -81,6 +91,12 @@ def get_exercise_demo_speech(action: str) -> str:
 
 def get_round_prompt_speech(action: str, target_reps: int) -> str:
     """Prompt the user to begin after the robot has finished its demonstration."""
+    if action == HOLD_ACTION:
+        return "Raise both arms straight above your head and hold them up as long as you can!"
+    if action == "chair_rise":
+        return f"Sit on the chair, then stand up slowly. Show me {format_exercise_name(action, target_reps)}!"
+    if action == "pick_up":
+        return f"Pick something up from the floor. Show me {format_exercise_name(action, target_reps)}!"
     return f"Now it's your turn! Show me {format_exercise_name(action, target_reps)}!"
 
 
@@ -111,8 +127,24 @@ def get_round_complete_speech(action: str, reps_done: int, timed_out: bool = Fal
     return f"Yay! You did {done_phrase}!"
 
 
+def get_hold_cheer_speech(seconds: int) -> str:
+    """Encourage the user while the arms are up; `seconds` is a multiple of HOLD_CHEER_EVERY_S."""
+    cheers = ("Keep going!", "You're so strong!", "Amazing!", "Don't stop now!")
+    return f"{seconds} seconds! {cheers[(seconds // HOLD_CHEER_EVERY_S - 1) % len(cheers)]}"
+
+
+def get_hold_complete_speech(held_s: float) -> str:
+    """Feedback after the arms came down (or the round ran out), from the longest hold."""
+    seconds = round(held_s)
+    if held_s < HOLD_MIN_S:
+        return "Time's up! That's okay, let's try the next one!"
+    return f"Wow, you kept your arms up for {seconds} {'second' if seconds == 1 else 'seconds'}!"
+
+
 def get_outro_speech(total_reps: int, completed_rounds: int, total_rounds: int) -> str:
     """Generate celebratory session outro speech with singular/plural agreement."""
+    if total_reps == 0:  # e.g. a CMAS session where only the arms-up hold went well
+        return "All done! You were amazing! Bye bye, see you next time!"
     rep_word = "repetition" if total_reps == 1 else "repetitions"
     round_word = "round" if completed_rounds == 1 else "rounds"
     return (
@@ -154,7 +186,8 @@ class SessionPlan:
     ) -> SessionPlan:
         """Create a session plan with `reps_per_round` repetitions for each exercise."""
         rounds = [
-            ExerciseRound(action=ex, target_reps=reps_per_round, timeout_s=timeout_s)
+            ExerciseRound(action=ex, target_reps=reps_per_round,
+                          timeout_s=HOLD_TIMEOUT_S if ex == HOLD_ACTION else timeout_s)
             for ex in exercises
         ]
         return cls(rounds=rounds, reps_per_round=reps_per_round)

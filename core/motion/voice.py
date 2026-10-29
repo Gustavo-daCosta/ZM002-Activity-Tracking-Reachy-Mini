@@ -4,7 +4,8 @@ Provides high-quality, natural neural speech using Piper TTS (ONNX/VITS) by defa
 with graceful fallback to spd-say (speech-dispatcher) when Piper is not available.
 
 Features:
-- Natural offline neural voice synthesis using Piper TTS (~50 ms synthesis latency).
+- Natural offline neural voice synthesis using Piper TTS (on the CM4 ~0.6 s per second of audio, so the
+  next sentence is synthesized while the current one plays).
 - Non-blocking execution via background worker queue: vision loops and robot motor
   threads are never blocked or delayed by audio generation or playback.
 - Cooldown tracking per action class so repeated detections do not trigger spam.
@@ -15,6 +16,7 @@ Features:
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 from pathlib import Path
@@ -171,10 +173,13 @@ class ActionVoice:
         self._piper_voice = None
         self._syn_config = None
 
-        # Queue for sequential speech synthesis & playback
+        # Two stages: text -> synthesis -> playback, so synthesis of the next sentence overlaps playback of
+        # the current one instead of being a silent gap before every sentence.
         self._queue: queue.Queue[tuple[str, Optional[threading.Event]]] = queue.Queue()
+        self._play_queue: queue.Queue[tuple[Optional[Callable[[], None]], Optional[threading.Event]]] = queue.Queue()
         self._stop_event = threading.Event()
         self._worker_thread: Optional[threading.Thread] = None
+        self._play_thread: Optional[threading.Thread] = None
 
         self._init_backend(backend)
 
@@ -183,6 +188,10 @@ class ActionVoice:
                 target=self._worker_loop, daemon=True, name="ActionVoice-Worker"
             )
             self._worker_thread.start()
+            self._play_thread = threading.Thread(
+                target=self._play_loop, daemon=True, name="ActionVoice-Player"
+            )
+            self._play_thread.start()
 
     def _init_backend(self, requested_backend: str) -> None:
         """Initialize the selected TTS backend."""
@@ -275,44 +284,58 @@ class ActionVoice:
             logger.warning("voice.wait() timed out after %.1f s — audio backend may be stuck", timeout)
 
     def _worker_loop(self) -> None:
-        """Background thread consuming text items and playing audio sequentially."""
+        """Synthesis stage: turn each queued text into a ready-to-play callable for `_play_loop`."""
         while not self._stop_event.is_set():
             try:
-                item = self._queue.get(timeout=0.2)
+                text, done_event = self._queue.get(timeout=0.2)
             except queue.Empty:
                 continue
 
-            text, done_event = item
+            play = None
             try:
-                if text == self._FENCE:
-                    # Fence sentinel: just signal, don't speak anything.
-                    pass
-                else:
-                    self._speak_sync(text)
+                if text != self._FENCE:  # a fence only travels through to signal `done_event`
+                    play = self._prepare(text)
+            except Exception as exc:
+                logger.error("Error during TTS synthesis: %s", exc)
+            finally:
+                self._queue.task_done()
+            self._play_queue.put((play, done_event))
+
+    def _play_loop(self) -> None:
+        """Playback stage: play prepared sentences in order, then signal their `done_event`."""
+        while not self._stop_event.is_set():
+            try:
+                play, done_event = self._play_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            try:
+                if play is not None:
+                    play()
             except Exception as exc:
                 logger.error("Error during TTS playback: %s", exc)
             finally:
-                self._queue.task_done()
                 if done_event is not None:
                     done_event.set()
 
-    def _speak_sync(self, text: str) -> None:
-        """Synchronously synthesize and play text."""
+    def _prepare(self, text: str) -> Optional[Callable[[], None]]:
+        """Do the slow part now (Piper synthesis); return what plays it, or None for silence."""
         if self.backend == "piper" and self._piper_voice is not None:
-            self._speak_piper(text)
-        elif self.backend == "spd-say":
-            self._speak_spd_say(text)
+            import numpy as np
 
-    def _speak_piper(self, text: str) -> None:
-        """Synthesize with Piper and output audio, with hang protection."""
+            chunks = list(self._piper_voice.synthesize(text, syn_config=self._syn_config))
+            if not chunks:
+                return None
+            audio = np.concatenate([c.audio_float_array for c in chunks])
+            return functools.partial(self._play_audio, audio, chunks[0].sample_rate)
+        if self.backend == "spd-say":
+            return functools.partial(self._speak_spd_say, text)
+        return None
+
+    def _play_audio(self, audio, sample_rate: int) -> None:
+        """Play synthesized audio, with hang protection."""
         import numpy as np
 
-        chunks = list(self._piper_voice.synthesize(text, syn_config=self._syn_config))
-        if not chunks:
-            return
-
-        audio = np.concatenate([c.audio_float_array for c in chunks])
-        sample_rate = chunks[0].sample_rate
         audio_duration_s = len(audio) / sample_rate
         # Give 5 extra seconds beyond the natural audio length before we give up.
         playback_timeout = audio_duration_s + 5.0
@@ -433,5 +456,6 @@ class ActionVoice:
     def close(self) -> None:
         """Stop worker thread and cleanup."""
         self._stop_event.set()
-        if self._worker_thread is not None and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=1.0)
+        for thread in (self._worker_thread, self._play_thread):
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=1.0)
