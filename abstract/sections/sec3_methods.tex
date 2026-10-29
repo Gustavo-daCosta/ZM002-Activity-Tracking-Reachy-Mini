@@ -39,38 +39,16 @@ The research was organised around two complementary activities. First, existing 
     \label{fig:research-approach}
 \end{figure}
 
-\subsection{Pose-model research and selection}
+\subsection{Realisation Phase}
+In the realisation phase, the research was turned into a working prototype. Because the technical choices were not yet fully determined at the start, realisation did not follow the design strictly from above. But proceeded through short build-test cycles in which each design decision was validated on a functional prototype as soon as possible.
+A simulation first strategy was chosen because building on the physical robot was not always practical. The code was therefore organised by where it must run. A shared core that is identical in both environments, robot applications, simulation tools (a MuJoCo simulation of the Reachy Mini and a webcam-based simulation on the laptop). All dependencies point only into the core, so that one model file and one feature implementation serve both the simulation and the robot. 
 
-Candidate models for human pose detection and temporal activity analysis were investigated under the Reachy Mini's CPU and camera constraints. The candidates included BlazePose for fast 2D pose detection, ViTPose as a transformer-based 2D estimator, WHAM and CameraHMR for 3D motion or pose-and-shape estimation, MoveNet for lightweight 2D pose estimation, SAM2 for segmentation, PySlowFast for video classification, FSPose for fused-heatmap pose estimation, GraphEnet for graph-based pose estimation, YOLOPose for pose estimation using the YOLO framework, MoViNets for efficient video recognition, and TSM-MobileNetV2 for lightweight temporal modelling.
+\subsection{Testing Phase}
+Testing was not carried out as a single stage after the build. But was integrated into the short design cycles. Each component was checked in simulation first and then run on the physical Reachy Mini robot. In this way, problems that only appear on the real hardware  were found and fixed. Pose models were benchmarked on the robot's CPU to determine which estimators are feasible, and the detection rate and keypoint confidence of the chosen pose backend were measured on robot footage and on replayed recordings. 
+For the model evaluation, three data contexts were used deliberately: public datasets as the in-domain measure, recordings made with the robot itself as the realistic "robot in a room" measure, and external datasets as deliberately pessimistic checks of the domain gap. Where a class had not yet been measured on robot footage, this was recorded as not measured rather than extrapolated. Robustness to a partial view of the person was tested by removing the hip, knee and ankle keypoints from the test windows, simulating waist-up framing. The complete applications were run on the robot to verify frame rate, feedback and timing under real conditions.
 
-BlazePose, MoViNet-A0, TSM-MobileNetV2, ViTPose, YOLOPose, and MoveNet were benchmarked under comparable conditions. Throughput and mean pose-inference time were recorded. The evaluation also considered whether each model could run on the robot and produce the COCO-17 keypoint representation required by the downstream feature-extraction and recognition pipeline.
-
-MoveNet Lightning int8, executed through LiteRT, was selected because it provided the most suitable trade-off between speed, keypoint compatibility, and deployment feasibility.
-
-\subsection{Training, export, and inference}
-
-No new video recordings were collected for model training. Instead, the recognition models were trained using existing COCO-17 skeleton data published by OpenMMLab for NTU RGB+D 60 \cite{shahroudy2016ntu} (wave and clapping) and UCF101 \cite{soomro2012ucf101} (pushup, squat, and jumping jacks). HMDB51 was used only as an external test set. All other dataset classes were labelled as none.
-
-Each clip was resampled from 30 to approximately 10 FPS to match the robot camera. The clips were then divided into temporal windows using the same feature-extraction code as the live system: 1.5-second windows with nine features for the binary wave model, and 3-second windows with 34 features for the six-class action model. To approximate the table-mounted camera perspective, each clip was also windowed with leg and hip keypoints removed.
-
-Random forests were trained using scikit-learn \cite{pedregosa2011scikit}. The wave model used 100 trees with a maximum depth of six, while the action model used 300 class-balanced trees. The models were evaluated using five-fold GroupKFold by subject or footage group, following \cite{saeb2017need}. Precision, recall, and F1 scores were calculated from out-of-fold predictions. A confidence threshold was tuned for each class using these predictions; windows below the threshold were classified as none.
-
-The final forests were fitted on all training windows and exported to compressed \texttt{.npz} files containing the decision-tree node arrays. On the robot, a NumPy-only implementation traverses these trees and reproduces scikit-learn's \texttt{predict\_proba} behaviour, removing the need for scikit-learn during inference.
-
-\subsection{Robot integration}
-
-The applications use the Reachy Mini Python SDK (\texttt{reachy\_mini} 1.10.0, matched to the daemon version) for motion and the daemon REST API on port 8000 for state management.
-
-Before camera, tracking, or movement operations, a standard-library preflight procedure checks network reachability, daemon and backend state, running applications and movements, motor mode, sleep pose, camera ownership, and tracker frames. When automatic correction is enabled, the procedure enables the motors, executes the wake-up movement, and reacquires the camera. It returns an explicit ready, not-ready, or unreachable status. A context manager combines preflight checks, SDK connection, and cleanup, including stopping head tracking and optionally returning the robot to its sleep pose.
-
-Because the vision loop operates at approximately 10 FPS while the daemon controls the robot at 50 Hz, a dedicated thread streams \texttt{set\_target} commands at 50 Hz. Each recognised action produces a distinct antenna movement pattern defined by amplitude, frequency, and a whole number of cycles ending at the neutral pose. Head and body following use an integrating controller based on the image-position error of the torso centre. Body yaw extends the tracking range beyond the head's 60-degree movement limit relative to the body.
-
-Additional integrations include an annotated MJPEG camera stream for browser-based observation without a local display, a remote-inference mode that sends low-resolution frames (192$\times$108 pixels) to a laptop GPU and receives keypoints over HTTP, and a coach workflow for training personalised models on the robot's CPU. In the coach workflow, scikit-learn runs in a low-priority subprocess to keep the camera and tracking loops responsive. A failed training run does not overwrite the previous model. Deployment uses an isolated virtual environment to avoid modifying the robot's system environment.
-
-\subsection{Testing and evaluation}
-
-Testing and evaluation examined the technical feasibility of the system against the requirements established during the research phase. Model performance was assessed using the benchmark results and the out-of-fold precision, recall, and F1 scores. HMDB51 provided an external test set beyond the datasets used for training. Camera-framing experiments considered the effect of removing hip and leg keypoints on the information available for activity recognition.
-
-The evaluation also considered inference speed, CPU-only deployment, compatibility with the Reachy Mini's camera and movement interfaces, and system responsiveness during simultaneous recognition and tracking. The findings were used to identify technical limitations and formulate recommendations for further development. The project focused on technical feasibility; it did not validate a clinical assessment instrument or establish clinical suitability for physiotherapy.
+\subsection{Evaluation and Advisory Phase}
+In the evaluation phase, the prototype was assessed against the requirements established in the research phase and against the central research question. The evaluation was structured as requirements check and a reflection on the research process, rather than as a clinical or user validation: the prototype is explicitly not a CMAS scorer, and engagement could not be measured because no user study was conducted.
+The requirements check established, per requirement, whether the prototype meets it, or does not meet it. The process reflection evaluated the chosen approach itself: which decisions contributed and which aspects limited the results.
 
 \newpage
