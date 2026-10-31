@@ -67,6 +67,11 @@ This was the most suitable result for the CPU-only target, and the model produce
 Cropping each frame around the previous pose, instead of letterboxing the whole wide-angle frame, raised the share of robot frames with a detected person from 52\% to 72\%.
 On a replay of a laptop recording with the robot's aspect ratio, it raised the mean keypoint confidence from 0.48 to 0.68.
 
+\subsection{GPU Acceleration Experiments}
+The two GPU implementations used LiteRT and WebGPU. In MoveNet, an ARM64 LiteRT runner could be created, while in BlazePose a native C++ library as well as a GPU inspector could be built. The two implementations could be tested in runtime, but both failed at the GPU initialization step.
+After further investigations, it was found out that there was a compatibility problem with the prebuilt LiteRT WebGPU accelerator. It included AES instructions, which were not supported by the Reachy Mini's Cortex-A72 CPU and thus caused an illegal instruction problem. The problem appeared to be independent of the camera and model inference, meaning that it was caused by the GPU runtime and not by the models themselves.
+Neither of the implementations could thus reach the GPU inference step. The full code of the GPU implementations are available in the /repos section of the repository. Build results are included in Appendix~\ref{app:gpu}.
+
 \subsection{CMAS Items}
 In CMAS mode the prototype recognises that four CMAS items were performed; it does not score them.
 Items~12 (chair rise) and~14 (pick-up) are classified by a three-class forest (none, chair rise, pick-up) trained on NTU RGB+D alone (actions \enquote{standing up} and \enquote{pick up}).

@@ -1,7 +1,7 @@
 \section{Conclusion}
 The goal was to find out whether the Reachy Mini can detect a person,
 recognise their activity and give expressive feedback within the limits
-of its own CPU. For the technical part of that goal the answer is
+of its own CPU. GPU acceleration was also investigated through two LiteRT/WebGPU implementations using MoveNet and BlazePose. Although both implementations were successfully prepared for ARM64, neither reached GPU inference because the shared WebGPU accelerator contained AES instructions unsupported by the Reachy Mini's Cortex-A72 processor. This established a concrete compatibility limitation and provides a starting point for future work. Rebuilding the accelerator for the target processor is the most direct next step.
 The complete pipeline runs on the robot's Raspberry Pi CM4
 without a GPU or a laptop. Pose estimation takes about 34 ms per
 frame, features and forest a few milliseconds, and the camera's 10~FPS,
