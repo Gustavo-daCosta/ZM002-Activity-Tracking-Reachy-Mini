@@ -10,6 +10,18 @@ simulation, so they are developed on a laptop and deployed unchanged.
 Recognised actions are answered in real time with antenna signatures and
 head and body following. \newline
 
+The robot sessions turn this recognition pipeline into a guided interaction.
+The robot welcomes the user, checks framing, demonstrates exercises, announces
+rounds, counts recognised repetitions, encourages held postures, and reports
+progress and completion through speech, antenna movements, head and body
+gestures, and an optional visual overlay. The personalised coach first records
+the child's movements, trains a local model from keypoints, and then uses that
+model in a workout. This gives the user immediate confirmation and clear
+recovery instructions when the person is not visible, while local keypoint
+storage avoids retaining video. These features support the intended exercise
+buddy experience, but they are design intentions rather than measured UX
+results because no user study was conducted. \newline
+
 The answer to ``how well'' is more limited. In live use, wave, clapping
 and jumping jacks were reliable enough to demonstrate, and squats were
 recognised with about one repetition in seven missed. Push-ups were not.
