@@ -228,19 +228,68 @@ datasets/      1.8 GB public skeleton datasets, gitignored; see datasets/SOURCES
 
 ---
 
-## 5. Router configuration
+## 5. Router and network configuration
 
-> *To be filled in.*
+The dedicated router shipped with the robot is a **TP-Link TL-WR3002X (AX3000 Wi-Fi 6 Router)**. It provides a private, isolated local network for low-latency communication between the development computer and the Reachy Mini, avoiding enterprise client-isolation policies and firewall blocks.
 
-<!--
-Suggested content:
-- Router model and admin URL / credentials (or where they are kept)
-- SSID and password of the network the robot and the development computer join
-- How the robot gets its address (DHCP reservation / static IP) and which IP it has
-- Any port forwarding or firewall rules (robot ports: 22 SSH, 8000 daemon, 8080/8090 camera view,
-  8765/8766 remote mode)
-- After changing the robot's IP, update ROBOT_IP in robot/connect.py and HostName in ~/.ssh/config (section 7)
--->
+### 5.1 Network credentials and defaults
+
+| Property | Value |
+|---|---|
+| **Router model** | TP-Link TL-WR3002X (AX3000) |
+| **SSID (Wi-Fi Name)** | `Reachy Mini` |
+| **Wi-Fi Password** | `reachy*321` |
+| **Router Admin Webpage** | `http://tplinkwifi.net` or `http://192.168.0.1` |
+| **Current Robot IP** | `192.168.137.53` (or `reachy-mini.local` via mDNS) |
+
+### 5.2 Operating scenarios and setup options
+
+Depending on whether you are working in an institutional setting or at home, configure the network using one of the two methods below:
+
+#### Scenario A: University or corporate networks (e.g., Eduroam, 802.1X, captive portals)
+Enterprise and university networks like **Eduroam** enforce 802.1X/WPA-Enterprise authentication (username + password/certificates) and strict client-to-client isolation, which blocks direct peer-to-peer communication between devices. The Reachy Mini cannot authenticate directly against Eduroam.
+
+To set up the robot in an Eduroam or corporate environment:
+1. **Connect your computer to Eduroam** via Wi-Fi so that your computer retains normal internet access.
+2. **Connect your computer to the router via Ethernet**:
+   - Power on the TP-Link TL-WR3002X router.
+   - Connect an Ethernet cable from your computer (using an Ethernet port or USB-C adapter) to the **WAN/LAN port** of the router.
+3. **Configure the router in Access Point (AP) mode**:
+   - Open a web browser on your computer and go to `http://tplinkwifi.net` (or the default router gateway address).
+   - Follow the TP-Link setup wizard (or navigate to *Advanced $\rightarrow$ Operation Mode*) and select **Access Point mode**.
+   - Confirm that the wireless network is broadcasting SSID `Reachy Mini` with password `reachy*321`.
+4. **Share internet from the computer (optional but recommended)**:
+   - If the robot needs outbound internet access (e.g., for `pip` packages or updates), enable internet connection sharing on your laptop:
+     - **macOS:** *System Settings $\rightarrow$ General $\rightarrow$ Sharing $\rightarrow$ Internet Sharing* (share from Wi-Fi to Ethernet).
+     - **Windows:** *Control Panel $\rightarrow$ Network and Sharing Center $\rightarrow$ Change adapter options $\rightarrow$ Wi-Fi Properties $\rightarrow$ Sharing tab $\rightarrow$ Allow other network users to connect through this computer's Internet connection*.
+5. **Connect the robot**:
+   - Turn on the Reachy Mini; it is already configured to connect automatically to the `Reachy Mini` Wi-Fi network.
+   - Your computer communicates with the robot directly over the local subnet created by the router.
+
+#### Scenario B: Home or residential networks (WPA2/WPA3-Personal)
+On standard home Wi-Fi networks (which do not use enterprise authentication or client isolation), you have two options:
+
+1. **Direct home Wi-Fi connection**:
+   - You can connect both your development computer and the Reachy Mini directly to your home Wi-Fi. (To connect the robot to a new Wi-Fi, use an Ethernet cable or the Reachy Mini Control app on first boot).
+2. **Using the TP-Link TL-WR3002X router** (recommended for a dedicated, stable environment):
+   - **Access Point (AP) mode:** Connect the router's WAN port to your home modem/router with an Ethernet cable. The router broadcasts the `Reachy Mini` Wi-Fi network, giving all connected devices seamless internet and local communication.
+   - **Range Extender / Repeater mode:** In the router admin interface (`http://tplinkwifi.net`), switch the operation mode to **Range Extender / Repeater mode**. The router connects wirelessly to your home Wi-Fi network and extends it while broadcasting the local subnet. Both the robot and your computer can connect to `Reachy Mini` without needing any physical Ethernet cables.
+
+### 5.3 Important ports and IP reservation
+
+The following ports on the Reachy Mini must be open and accessible across the local network:
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `22` | TCP | SSH terminal access and code deployment (`robot/deploy.sh`) |
+| `8000` | HTTP | Daemon REST API and interactive Swagger documentation (`/docs`) |
+| `8080` / `8090` | HTTP | Live annotated MJPEG camera stream and session visual overlay (`stream.py`) |
+| `8765` / `8766` | WebSockets / HTTP | Remote-GPU session camera feed and keypoint streaming |
+
+> [!TIP]
+> **DHCP Address Reservation (Static IP):**
+> To prevent the robot's IP address from changing across reboots, log into the router admin interface at `http://tplinkwifi.net`, go to *Advanced $\rightarrow$ Network $\rightarrow$ DHCP Server $\rightarrow$ Address Reservation*, and bind the Reachy Mini's MAC address to a fixed IP (such as `192.168.137.53`).
+> If the robot's IP ever changes, update `ROBOT_IP` in [`robot/connect.py`](file:///home/guti/Documents/zuyd/ZM002-Activity-Tracking-Reachy-Mini/robot/connect.py) and `HostName` under `Host reachy` in `~/.ssh/config`.
 
 ---
 
