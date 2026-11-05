@@ -210,6 +210,67 @@ repos/         archived experiment repositories (GPU, BlazePose, benchmarking)
 datasets/      1.8 GB public skeleton datasets, gitignored; see datasets/SOURCES.md
 ```
 
+### Where do I find...? (quick lookup)
+
+| I want to... | Go to |
+|---|---|
+| See the features the models are trained on | `core/motion/features.py`: `FEATURE_NAMES` (9, wave) and `ACTION_FEATURE_NAMES` (34, actions, exercises and CMAS) |
+| Change how a window is cut or normalized (3 s, torso units) | `core/motion/window.py` (`ACTION_WINDOW_S`, `normalize_to_torso`) |
+| Change the list of classes or the antenna reaction to each | `core/motion/actions.py` (`ACTIONS`, `REACTIONS`) |
+| Change what the robot says | `core/coach/phrases.py` (coach) and `core/session/config.py` (guided workout) |
+| Change the workout plan (exercises, rounds, reps) | `core/session/config.py` (`ExerciseRound`, `SessionPlan`) |
+| Add or swap a pose model | `core/pose_backends/` (one file per model, `create_backend` in `__init__.py`) |
+| Retrain a model | `training/train_*.py` (section 10) |
+| See how the robot is followed by the head | `core/tracking.py` |
+| Fix a connection problem | `robot/preflight.py`, `robot/connect.py` |
+
+### Files by folder
+
+**`core/motion/`: from keypoints to a recognized action**
+
+| File | Contents |
+|---|---|
+| `window.py` | `KeypointWindow`: sliding window of recent poses, and the two normalizers (shoulder width for the wave model, torso length for the action models) |
+| `features.py` | **The feature definitions.** `window_features` (9 features, wave) and `action_features` (34 features: oscillation, joint angles, trunk height), plus their name tuples |
+| `forest.py` | Random forest loaded from `.npz` and evaluated with numpy only (no scikit-learn on the robot) |
+| `wave.py` | Wave detectors (rule and forest) and `WaveMonitor` |
+| `actions.py` | `ActionDetector` and `ActionMonitor`: classes, model paths, antenna reaction per class |
+| `cmas.py` | CMAS items 7 and 8 as a geometric rule (arms above the head, timed) |
+| `antennas.py` | Antenna waves and `TargetSender`, the 50 Hz thread that sends targets |
+| `voice.py` | Text-to-speech (Piper, with `spd-say` fallback) |
+
+**`core/pose_backends/`: image to COCO-17 keypoints.** `movenet.py` (ONNX on a laptop GPU, int8 LiteRT on the robot), `blazepose.py` (MediaPipe, not usable on the robot CPU), `vitpose.py` (ViTPose-S, top-down). `__init__.py` has `create_backend`.
+
+**`core/session/`: the guided workout.** `config.py` (plan, exercise names, all spoken phrases), `engine.py` (state machine; camera loop never blocks, transitions run on one worker thread), `gestures.py` (head and antenna gestures per phase).
+
+**`core/coach/`: the coach app logic.** `pipeline.py` (phases: intro, framing, recording, training, workout), `recording.py` (guided recording and round validation, same format as `collect/`), `trainer.py` (runs `training.train_exercises` in a subprocess), `head.py` (head follow vs. gesture, never both), `phrases.py` (what the coach says; tuned for children).
+
+**`core/` top level.** `tracking.py` (image error to head/body angles), `vision.py` (cameras, model download, drawing), `picamera_source.py` (robot camera through Picamera2), `stream.py` (MJPEG preview at `:8080`), `metrics.py` (timings and FPS).
+
+**`core/models/`.** `action_classifier.npz` (6 classes), `exercise_classifier.npz` (squat, arm raise, side bend, trained on our recordings), `cmas_classifier.npz` (chair rise, pick-up), `wave_classifier_ntu.npz` (wave). Pose weights are downloaded on first run.
+
+**`training/`: this computer only (scikit-learn).**
+
+| File | Contents |
+|---|---|
+| `data.py` | Builds training windows from our recordings and from the public datasets (resampled to ~10 FPS) |
+| `record.py` | Guided recording of wave / not-wave examples |
+| `train_wave.py` | Wave model (NTU RGB+D, checked on HMDB51 and our recordings) |
+| `train_actions.py` | Six-class model on NTU, UCF101 and HMDB51 |
+| `train_exercises.py` | Exercise model from `collect/recordings/` |
+| `train_cmas.py` | CMAS model (chair rise, pick-up) on NTU, optionally with our recordings |
+| `data/wave/` | Two tracked recording sessions (`.npz`), used to check wave detection |
+
+**`robot/`.** `connect.py`, `preflight.py`, `deploy.sh`, `demo.sh` and `remote_camera_server.py` as in the tree above; the apps are in the table below.
+
+**`sim/`.** `start.sh` starts the MuJoCo daemon. `body_tracking.py` (webcam + pose model comparison, `--detect-wave`, `--detect-actions`, `--cmas`), `exercise_session.py` (guided workout), `coach.py` (the coach), `exercises.sh` (one-command exercise demo), `camera_check.py` (list and test cameras), `speech_antenna_test.py` (audio + antennas without camera).
+
+**`collect/`.** `record_exercises.py` + `README.md` for volunteers (output is one zip). `recordings/<person>/` and `recordings_cmas/` hold the keypoint sessions that `train_exercises.py` and `train_cmas.py` read. `coach_recordings/` is what the coach saved during tests.
+
+**`tools/`.** `download_datasets.sh` (public skeleton datasets), `reachy_ssh_setup.sh` (SSH key and `Host reachy`), `gen_api_reference.py` (regenerates the REST reference in `.claude/skills/reachy-api/`).
+
+**`docs/`.** `overview.md`, `robot.md`, `simulation.md`, `pose-models.md`, `action-recognition.md` (measured results), `cmas-demo.md`, `demo.md`, `training.md`. `walkthrough.md` at the repo root explains the code file by file.
+
 ### The apps (`robot/apps/`)
 
 | App | What it does | Run with |
