@@ -89,7 +89,7 @@ The comparison also exposed deployment constraints. BlazePose and ViTPose are us
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\linewidth]{figures/reachy-benchmark.png}
+  \includegraphics[width=0.8\linewidth]{figures/reachy-benchmark.png}
   \caption{Benchmark results of candidate models on the Reachy Mini hardware.}
   \label{fig:reachy-benchmark}
 \end{figure}
@@ -98,6 +98,12 @@ The comparison also exposed deployment constraints. BlazePose and ViTPose are us
 The two GPU implementations used LiteRT and WebGPU. In MoveNet, an ARM64 LiteRT runner could be created, while in BlazePose a native C++ library as well as a GPU inspector could be built. The two implementations could be tested in runtime, but both failed at the GPU initialization step.
 After further investigations, it was found out that there was a compatibility problem with the prebuilt LiteRT WebGPU accelerator. It included AES instructions, which were not supported by the Reachy Mini's Cortex-A72 CPU and thus caused an illegal instruction problem. The problem appeared to be independent of the camera and model inference, meaning that it was caused by the GPU runtime and not by the models themselves.
 Neither of the implementations could thus reach the GPU inference step. The full code of the GPU implementations are available in the /repos section of the repository. Build results are included in Appendix~\ref{app:gpu}.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=1.00\linewidth]{figures/aes-error.png}
+  \caption{Architecture and main problem of the GPU implementations.}
+  \label{fig:aes-error}
+\end{figure}
 
 \subsection{CMAS Items}\label{sec:cmas}
 In CMAS mode the prototype recognises that four CMAS items were performed; it does not score them.

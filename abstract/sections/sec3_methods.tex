@@ -42,6 +42,12 @@ The research was organised around two complementary activities. First, existing 
 \subsection{Realisation Phase}
 In the realisation phase, the research was turned into a working prototype. Because the technical choices were not yet fully determined at the start, design proceeded through short build-test cycles in which each design decision was validated on a functional prototype as soon as possible.
 A simulation-first strategy was chosen because building on the physical robot was not always practical. The code was therefore organised by where it must run. A shared core that is identical in both environments, robot applications, simulation tools (a MuJoCo simulation of the Reachy Mini and a webcam-based simulation on the laptop). All dependencies point only into the core, so that one model file and one feature implementation serve both the simulation and the robot. 
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.6\linewidth]{figures/simulation-to-robot.png}
+  \caption{Simulation-first approach for prototype development.}
+  \label{fig:simulation-to-robot}
+\end{figure}
 
 \subsection{Testing Phase}
 Testing was not carried out as a single stage after the build. But was integrated into the short design cycles. Each component was checked in simulation first and then run on the physical Reachy Mini robot. In this way, problems that only appear on the real hardware  were found and fixed. Pose models were benchmarked on the robot's CPU to determine which estimators are feasible, and the detection rate and keypoint confidence of the chosen pose backend were measured on robot footage and on replayed recordings. In addition to CPU benchmarking, GPU acceleration was investigated to determine whether the Reachy Mini's integrated VideoCore V3D GPU could be used for pose estimation. Additional details on the GPU acceleration experiments and their implementation are provided in Appendix~\ref{app:gpu}.
