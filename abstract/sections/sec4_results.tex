@@ -24,7 +24,7 @@ Each detection drives the feedback: a distinct antenna signature per action, ren
 As for architecture and organization, the code is organised by where it must run: a shared core (pose backends, features, models, feedback), robot applications, simulation tools for MuJoCo and a webcam, and training tools, which are the only part that needs scikit-learn.
 Dependencies point only into the core, so one model file and one feature implementation serve both environments, and training and inference cannot drift apart.
 
-For the final application, the robot runs action recognition (the six classes, or the CMAS items of Section~4.6), wave recognition, head and body tracking, and a coach for children.
+For the final application, the robot runs action recognition (the six classes, or the CMAS items of Section~\ref{sec:cmas}), wave recognition, head and body tracking, and a coach for children.
 The coach guides a child through about 4.5 minutes of recording (squats, arm raises, side bends), trains a personal model on the robot's own CPU while the head keeps following, and then runs a workout with that model.
 A preflight tool brings the robot into a known state before every application.
 
@@ -46,11 +46,11 @@ Feedback is deliberately multimodal. Speech provides explicit instructions, repe
 
 This design can improve the expected home experience in several ways. Immediate, action-specific feedback reduces uncertainty about whether an exercise was detected and makes the system less like an opaque measurement device. Demonstrations and short instructions reduce the need for a parent or clinician to repeat every exercise explanation, while repetition counts and round transitions give the child a clear sense of progress. Praise, playful gestures and a personalised model support the intended role of the robot as an exercise buddy. Framing checks and retry logic make recoverable camera problems explicit instead of silently producing missing measurements. Local keypoint storage also supports privacy by avoiding the need to retain children's video. These are design benefits inferred from the implemented interaction. No user study was conducted, so increased engagement, reduced burden or improved adherence cannot yet be claimed as measured outcomes.
 
-Table~\ref{tab:decisions} links the main decisions to the requirement or insight behind them.
+Table~\ref{tab:decisions} maps the system requirements and empirical design insights to the resulting architectural decisions.
 
 \begin{table}[htbp]
   \centering
-  \caption{Factors Influencing the System Design.}
+  \caption{Mapping of System Requirements and Design Insights to Architectural Decisions.}
   \label{tab:decisions}
   \rowcolors{2}{white}{white}
   \begin{tabular}{|p{0.44\textwidth}|p{0.44\textwidth}|}
@@ -80,57 +80,51 @@ Table~\ref{tab:decisions} links the main decisions to the requirement or insight
 
 \subsection{Pose-Model Performance}
 The benchmark compared BlazePose, MoViNet-A0, TSM-MobileNetV2, ViTPose and MoveNet as candidates for the perception pipeline.
-MoveNet Lightning int8 reached 23.80~FPS in the inference benchmark, with a mean pose-inference time of approximately 34~ms on the Reachy Mini; in the complete application the camera, at about 10~FPS, sets the rate (Section~4.5).
+MoveNet Lightning int8 reached 23.80~FPS in the inference benchmark, with a mean pose-inference time of approximately 34~ms on the Reachy Mini; in the complete application the camera, at about 10~FPS, sets the rate.
 This was the most suitable result for the CPU-only target, and the model produces the COCO-17 keypoints the recognition code expects.
 Cropping each frame around the previous pose, instead of letterboxing the whole wide-angle frame, raised the share of robot frames with a detected person from 52\% to 72\%.
 On a replay of a laptop recording with the robot's aspect ratio, it raised the mean keypoint confidence from 0.48 to 0.68.
+
+The comparison also exposed deployment constraints. BlazePose and ViTPose are useful comparison models, but the robot cannot use the available BlazePose MediaPipe binary because it requires AES instructions unavailable on the Reachy's Cortex-A72; ViTPose's detector-and-pose pipeline is intended for the laptop or simulation environment. MoViNet-A0 and TSM-MobileNetV2 were considered for temporal classification rather than selected as replacements for the keypoint-based pipeline. Consequently, MoveNet int8 was used for robot inference, while the shared downstream representation remained model-independent. Figure~\ref{fig:reachy-benchmark} summarises the benchmark metrics measured on the robot.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{figures/reachy-benchmark.png}
+  \caption{Benchmark results of candidate models on the Reachy Mini hardware.}
+  \label{fig:reachy-benchmark}
+\end{figure}
 
 \subsection{GPU Acceleration Experiments}
 The two GPU implementations used LiteRT and WebGPU. In MoveNet, an ARM64 LiteRT runner could be created, while in BlazePose a native C++ library as well as a GPU inspector could be built. The two implementations could be tested in runtime, but both failed at the GPU initialization step.
 After further investigations, it was found out that there was a compatibility problem with the prebuilt LiteRT WebGPU accelerator. It included AES instructions, which were not supported by the Reachy Mini's Cortex-A72 CPU and thus caused an illegal instruction problem. The problem appeared to be independent of the camera and model inference, meaning that it was caused by the GPU runtime and not by the models themselves.
 Neither of the implementations could thus reach the GPU inference step. The full code of the GPU implementations are available in the /repos section of the repository. Build results are included in Appendix~\ref{app:gpu}.
 
-\subsection{CMAS Items}
+\subsection{CMAS Items}\label{sec:cmas}
 In CMAS mode the prototype recognises that four CMAS items were performed; it does not score them.
 Items~12 (chair rise) and~14 (pick-up) are classified by a three-class forest (none, chair rise, pick-up) trained on NTU RGB+D alone (actions \enquote{standing up} and \enquote{pick up}).
 Items~7 and~8 (arms straight above the head, and for how long) use a geometric rule on single frames, because a held posture has no movement for a window to learn.
 Item~13 (stool step) was left out: no public dataset contains it and none was recorded.
+Figure~\ref{fig:testing-cmas-movements} illustrates the live test execution of these items captured during demonstrations.
 
-\subsection{Pose-model performance}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/testing_cmas_movements.png}
+  \caption{Live testing of CMAS movements: real-time detection of held postures (timed arms-up) and transition exercises (chair rise and floor pick-up) performed before the robot.}
+  \label{fig:testing-cmas-movements}
+\end{figure}
 
+\subsection{Wave Recognition}
+On two recorded sessions with our own robot (416 windows), the rule-based detector reached F1 0.811 (precision 1.000, recall 0.682). The NTU-trained forest, which never saw these recordings, reached F1 0.951 and outperformed a forest trained on the sessions themselves (F1 0.884, historical only). On unseen NTU subjects, where the negatives include deliberately confusable gestures (salute, selfie and brushing hair), F1 was 0.556. On HMDB51 movie clips it was 0.065, a deliberately pessimistic external check.
+Live robot feedback during gesture testing is depicted in Figure~\ref{fig:testing-robot-feedback}.
 
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.65\linewidth]{figures/testing_robot_feedback.png}
+  \caption{Physical robot feedback during live testing: Reachy Mini actively maintains head tracking while triggering distinct antenna motion signatures in response to recognized user activities.}
+  \label{fig:testing-robot-feedback}
+\end{figure}
 
-The benchmark compared BlazePose, MoViNet-A0, TSM-MobileNetV2, ViTPose and
-MoveNet as candidate components for the perception pipeline. MoveNet Lightning
-int8 achieved an average of 23.80 FPS, with a mean pose-inference time of
-approximately 34~ms on the Reachy Mini. This was the most suitable result for
-the project's CPU-only deployment target. The model also produces the COCO-17
-keypoints expected by the temporal feature and recognition code.
-
-The comparison also exposed deployment constraints. BlazePose and ViTPose are
-useful comparison models, but the robot cannot use the available BlazePose
-MediaPipe binary because it requires AES instructions unavailable on the
-Reachy's Cortex-A72; ViTPose's detector-and-pose pipeline is intended for the
-laptop or simulation environment. MoViNet-A0 and TSM-MobileNetV2 were
-considered for temporal classification rather than selected as replacements
-for the keypoint-based pipeline. Consequently, MoveNet int8 was used for
-robot inference, while the shared downstream representation remained
-model-independent.
-
-\subsection{Wave recognition}
-
-
-
-
-On two recorded sessions with our own robot (416 windows), the rule-based
-detector reached F1 0.811 (precision 1.000, recall 0.682). The NTU-trained
-forest, which never saw these recordings, reached F1 0.951 and outperformed a
-forest trained on the sessions themselves (F1 0.884, historical only). On
-unseen NTU subjects, where the negatives include deliberately confusable
-gestures (salute, selfie and brushing hair), F1 was 0.556. On HMDB51 movie
-clips it was 0.065, a deliberately pessimistic external check.
-
-\subsection{Six-class action recognition}
+\subsection{Six-Class Action Recognition}
 
 
 

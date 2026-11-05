@@ -45,7 +45,14 @@ A simulation-first strategy was chosen because building on the physical robot wa
 
 \subsection{Testing Phase}
 Testing was not carried out as a single stage after the build. But was integrated into the short design cycles. Each component was checked in simulation first and then run on the physical Reachy Mini robot. In this way, problems that only appear on the real hardware  were found and fixed. Pose models were benchmarked on the robot's CPU to determine which estimators are feasible, and the detection rate and keypoint confidence of the chosen pose backend were measured on robot footage and on replayed recordings. In addition to CPU benchmarking, GPU acceleration was investigated to determine whether the Reachy Mini's integrated VideoCore V3D GPU could be used for pose estimation. Additional details on the GPU acceleration experiments and their implementation are provided in Appendix~\ref{app:gpu}.
-For the model evaluation, three data contexts were used deliberately: public datasets as the in-domain measure, recordings made with the robot itself as the realistic "robot in a room" measure, and external datasets as deliberately pessimistic checks of the domain gap. Where a class had not yet been measured on robot footage, this was recorded as not measured rather than extrapolated. Robustness to a partial view of the person was tested by removing the hip, knee and ankle keypoints from the test windows, simulating waist-up framing. The complete applications were run on the robot to verify frame rate, feedback and timing under real conditions.
+For the model evaluation, three data contexts were used deliberately: public datasets as the in-domain measure, recordings made with the robot itself as the realistic "robot in a room" measure, and external datasets as deliberately pessimistic checks of the domain gap. Where a class had not yet been measured on robot footage, this was recorded as not measured rather than extrapolated. Robustness to a partial view of the person was tested by removing the hip, knee and ankle keypoints from the test windows, simulating waist-up framing. The complete applications were run on the robot to verify frame rate, feedback and timing under real conditions (Figure~\ref{fig:testing-setup-stream}).
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/testing_setup_stream.png}
+  \caption{Live testing setup and real-time vision interface: the robot's camera tracks the user while displaying the 17-keypoint skeleton overlay, temporal action classification, and status prompts.}
+  \label{fig:testing-setup-stream}
+\end{figure}
 
 \subsection{Evaluation Phase}
 In the evaluation phase, the prototype was assessed against the requirements established in the research phase and against the central research question. The evaluation was structured as requirements verification and a reflection on the research process, rather than as a clinical or user validation: the prototype is explicitly not a CMAS scorer, and engagement could not be measured because no user study was conducted.
